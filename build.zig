@@ -1,5 +1,45 @@
 const std = @import("std");
 
+const facilio_files = .{
+    // Facilio core
+    "fio.c",
+    "fiobj/fio_siphash.c",
+    "fiobj/fiobj_ary.c",
+    "fiobj/fiobj_data.c",
+    "fiobj/fiobj_hash.c",
+    "fiobj/fiobj_json.c",
+    "fiobj/fiobj_mustache.c",
+    "fiobj/fiobj_numbers.c",
+    "fiobj/fiobj_str.c",
+    "fiobj/fiobject.c",
+
+    // HTTP extensions
+    "http/http.c",
+    "http/http1.c",
+    "http/http_internal.c",
+    "http/websockets.c",
+
+    // CLI extensions
+    "cli/fio_cli.c",
+
+    // TLS extensions
+    "tls/fio_tls_missing.c",
+    "tls/fio_tls_openssl.c",
+
+    // Redis engine
+    "redis/redis_engine.c",
+};
+
+const facilio_includes = [_][]const u8{
+    "lib/facil",
+    "lib/facil/fiobj",
+    "lib/facil/http",
+    "lib/facil/http/parsers",
+    "lib/facil/cli",
+    "lib/facil/tls",
+    "lib/facil/redis",
+};
+
 // Although this function looks imperative, note that its job is to
 // declaratively construct a build graph that will be executed by an external
 // runner.
@@ -43,43 +83,18 @@ pub fn build(b: *std.Build) void {
     });
     facilio.addCSourceFiles(.{
         .root = facilio_dep.path("lib/facil"),
-        .files = &.{
-            // Facilio core
-            "fio.c",
-            "fiobj/fio_siphash.c",
-            "fiobj/fiobj_ary.c",
-            "fiobj/fiobj_data.c",
-            "fiobj/fiobj_hash.c",
-            "fiobj/fiobj_json.c",
-            "fiobj/fiobj_mustache.c",
-            "fiobj/fiobj_numbers.c",
-            "fiobj/fiobj_str.c",
-            "fiobj/fiobject.c",
-
-            // HTTP extensions
-            "http/http.c",
-            "http/http1.c",
-            "http/http_internal.c",
-            "http/websockets.c",
-
-            // CLI extensions
-            "cli/fio_cli.c",
-
-            // TLS extensions
-            "tls/fio_tls_missing.c",
-            "tls/fio_tls_openssl.c",
-
-            // Redis engine
-            "redis/redis_engine.c",
+        .files = &facilio_files,
+        .flags = &.{
+            "-Wshadow",
+            "-Wall",
+            "-Wextra",
+            "-Wno-missing-field-initializers",
+            "-Wpedantic",
         },
     });
-    facilio.addIncludePath(facilio_dep.path("lib/facil"));
-    facilio.addIncludePath(facilio_dep.path("lib/facil/fiobj"));
-    facilio.addIncludePath(facilio_dep.path("lib/facil/http"));
-    facilio.addIncludePath(facilio_dep.path("lib/facil/http/parsers"));
-    facilio.addIncludePath(facilio_dep.path("lib/facil/cli"));
-    facilio.addIncludePath(facilio_dep.path("lib/facil/tls"));
-    facilio.addIncludePath(facilio_dep.path("lib/facil/redis"));
+    for (facilio_includes) |dep_path| {
+        facilio.addIncludePath(facilio_dep.path(dep_path));
+    }
 
     // First we create the basic executable
     const exe = b.addExecutable(.{
@@ -93,13 +108,9 @@ pub fn build(b: *std.Build) void {
     exe.linkLibrary(facilio);
     // Finally we add the main.c file to our executable as a source file.
     exe.addCSourceFile(.{ .file = .{ .cwd_relative = "src/main.c" } });
-    exe.addIncludePath(facilio_dep.path("lib/facil"));
-    exe.addIncludePath(facilio_dep.path("lib/facil/fiobj"));
-    exe.addIncludePath(facilio_dep.path("lib/facil/http"));
-    exe.addIncludePath(facilio_dep.path("lib/facil/http/parsers"));
-    exe.addIncludePath(facilio_dep.path("lib/facil/cli"));
-    exe.addIncludePath(facilio_dep.path("lib/facil/tls"));
-    exe.addIncludePath(facilio_dep.path("lib/facil/redis"));
+    for (facilio_includes) |dep_path| {
+        exe.addIncludePath(facilio_dep.path(dep_path));
+    }
 
     const chat_exe = b.addExecutable(.{
         .name = "chat_example",
@@ -108,14 +119,10 @@ pub fn build(b: *std.Build) void {
     });
     chat_exe.linkLibC();
     chat_exe.linkLibrary(facilio);
-    chat_exe.addIncludePath(facilio_dep.path("lib/facil"));
-    chat_exe.addIncludePath(facilio_dep.path("lib/facil/fiobj"));
-    chat_exe.addIncludePath(facilio_dep.path("lib/facil/http"));
-    chat_exe.addIncludePath(facilio_dep.path("lib/facil/http/parsers"));
-    chat_exe.addIncludePath(facilio_dep.path("lib/facil/cli"));
-    chat_exe.addIncludePath(facilio_dep.path("lib/facil/tls"));
-    chat_exe.addIncludePath(facilio_dep.path("lib/facil/redis"));
     chat_exe.addCSourceFile(.{ .file = .{ .cwd_relative = "src/http-client.c" } });
+    for (facilio_includes) |dep_path| {
+        chat_exe.addIncludePath(facilio_dep.path(dep_path));
+    }
 
     b.installArtifact(chat_exe);
 
