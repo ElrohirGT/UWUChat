@@ -28,6 +28,45 @@ pub fn build(b: *std.Build) void {
     // location when the user invokes the "install" step (the default step when
     // running `zig build`).
     // b.installArtifact(lib);
+    //
+
+    const facilio_dep = b.dependency("facilio", .{
+        .target = target,
+        .optimize = optimize,
+    });
+
+    const facilio = b.addStaticLibrary(.{
+        .name = "facilio",
+        .link_libc = true,
+        .target = target,
+        .optimize = optimize,
+    });
+    facilio.addCSourceFiles(.{
+        .root = facilio_dep.path("lib/facil"),
+        .files = &.{
+            // Facilio core
+            "fio.c",
+            "fiobj/fio_siphash.c",
+            "fiobj/fiobj_ary.c",
+            "fiobj/fiobj_data.c",
+            "fiobj/fiobj_hash.c",
+            "fiobj/fiobj_json.c",
+            "fiobj/fiobj_mustache.c",
+            "fiobj/fiobj_numbers.c",
+            "fiobj/fiobj_str.c",
+            "fiobj/fiobject.c",
+
+            // HTTP extensions
+            "http/http.c",
+            "http/http1.c",
+            "http/http_internal.c",
+            "http/websockets.c",
+        },
+    });
+    facilio.addIncludePath(facilio_dep.path("lib/facil"));
+    facilio.addIncludePath(facilio_dep.path("lib/facil/fiobj"));
+    facilio.addIncludePath(facilio_dep.path("lib/facil/http"));
+    facilio.addIncludePath(facilio_dep.path("lib/facil/http/parsers"));
 
     // First we create the basic executable
     const exe = b.addExecutable(.{
@@ -38,6 +77,7 @@ pub fn build(b: *std.Build) void {
     // Since we need to use printf and stuff
     // We need the libC library.
     exe.linkLibC();
+    exe.linkLibrary(facilio);
     // Finally we add the main.c file to our executable as a source file.
     exe.addCSourceFile(.{ .file = .{ .cwd_relative = "src/main.c" } });
 

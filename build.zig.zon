@@ -23,6 +23,10 @@
     // Once all dependencies are fetched, `zig build` no longer requires
     // internet connectivity.
     .dependencies = .{
+        .facilio = .{
+            .url = "https://github.com/boazsegev/facil.io/archive/refs/tags/0.7.6.tar.gz",
+            .hash = "12203c234c0e07604235162ef65bcffa6396f1b77da66810f31e08573a777e97f63d"
+        }
         // See `zig fetch --save <url>` for a command-line interface for adding dependencies.
         //.example = .{
         //    // When updating this field to a new URL, be sure to delete the corresponding
