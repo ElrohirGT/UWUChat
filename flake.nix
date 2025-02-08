@@ -22,7 +22,7 @@
       pkgs = nixpkgsFor.${system};
     in {
       default = pkgs.mkShell {
-        packages = [pkgs.zig_0_13 pkgs.openssl];
+        packages = [pkgs.zig_0_13 pkgs.openssl pkgs.websocat];
       };
     });
   };
