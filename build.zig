@@ -43,7 +43,7 @@ const facilio_includes = [_][]const u8{
 // Although this function looks imperative, note that its job is to
 // declaratively construct a build graph that will be executed by an external
 // runner.
-pub fn build(b: *std.Build) void {
+pub fn build(b: *std.Build) !void {
     // Standard target options allows the person running `zig build` to choose
     // what target to build for. Here we do not override the defaults, which
     // means any target is allowed, and the default is native. Other options
@@ -74,27 +74,7 @@ pub fn build(b: *std.Build) void {
         .target = target,
         .optimize = optimize,
     });
-
-    const facilio = b.addStaticLibrary(.{
-        .name = "facilio",
-        .link_libc = true,
-        .target = target,
-        .optimize = optimize,
-    });
-    facilio.addCSourceFiles(.{
-        .root = facilio_dep.path("lib/facil"),
-        .files = &facilio_files,
-        .flags = &.{
-            "-Wshadow",
-            "-Wall",
-            "-Wextra",
-            "-Wno-missing-field-initializers",
-            "-Wpedantic",
-        },
-    });
-    for (facilio_includes) |dep_path| {
-        facilio.addIncludePath(facilio_dep.path(dep_path));
-    }
+    const facilio = try build_facilio(b, facilio_dep, target, optimize);
 
     // First we create the basic executable
     const exe = b.addExecutable(.{
@@ -183,4 +163,39 @@ pub fn build(b: *std.Build) void {
     // const test_step = b.step("test", "Run unit tests");
     // test_step.dependOn(&run_lib_unit_tests.step);
     // test_step.dependOn(&run_exe_unit_tests.step);
+}
+
+fn build_facilio(b: *std.Build, facilio_dep: *std.Build.Dependency, target: std.Build.ResolvedTarget, optimize: std.builtin.OptimizeMode) !*std.Build.Step.Compile {
+    var flags = std.ArrayList([]const u8).init(std.heap.page_allocator);
+    if (optimize != .Debug) try flags.append("-Os");
+    try flags.append("-Wno-return-type-c-linkage");
+    try flags.append("-fno-sanitize=undefined");
+    try flags.append("-DFIO_HTTP_EXACT_LOGGING");
+    try flags.append("-DHAVE_OPENSSL");
+    try flags.append("-DFIO_TLS_FOUND");
+
+    if (target.result.abi == .musl)
+        try flags.append("-D_LARGEFILE64_SOURCE");
+
+    const facilio = b.addStaticLibrary(.{
+        .name = "facilio",
+        .link_libc = true,
+        .target = target,
+        .optimize = optimize,
+    });
+    facilio.addCSourceFiles(.{
+        .root = facilio_dep.path("lib/facil"),
+        .files = &facilio_files,
+        .flags = flags.items,
+    });
+    for (facilio_includes) |dep_path| {
+        facilio.addIncludePath(facilio_dep.path(dep_path));
+    }
+    facilio.addIncludePath(facilio_dep.path(""));
+    facilio.linkLibC();
+    facilio.linkSystemLibrary("ssl");
+    facilio.linkSystemLibrary("crypto");
+    b.installArtifact(facilio);
+
+    return facilio;
 }
