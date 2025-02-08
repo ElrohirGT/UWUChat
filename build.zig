@@ -40,6 +40,12 @@ const facilio_includes = [_][]const u8{
     "lib/facil/redis",
 };
 
+const facilio_examples = [_][]const u8{
+    "examples/http-chat.c",
+    "examples/http-client.c",
+    "examples/http-hello.c",
+};
+
 // Although this function looks imperative, note that its job is to
 // declaratively construct a build graph that will be executed by an external
 // runner.
@@ -92,24 +98,52 @@ pub fn build(b: *std.Build) !void {
         exe.addIncludePath(facilio_dep.path(dep_path));
     }
 
-    const chat_exe = b.addExecutable(.{
-        .name = "chat_example",
-        .target = target,
-        .optimize = optimize,
-    });
-    chat_exe.linkLibC();
-    chat_exe.linkLibrary(facilio);
-    chat_exe.addCSourceFile(.{ .file = .{ .cwd_relative = "src/http-client.c" } });
-    for (facilio_includes) |dep_path| {
-        chat_exe.addIncludePath(facilio_dep.path(dep_path));
+    for (facilio_examples) |example_path_in_dep| {
+        var iter = std.mem.split(u8, example_path_in_dep, "/");
+        _ = iter.next();
+        const output_name = iter.next().?;
+        const step_name = try std.fmt.allocPrint(
+            std.heap.page_allocator,
+            "example:{s}",
+            .{output_name},
+        );
+
+        const example_exe = b.addExecutable(.{
+            .name = output_name,
+            .target = target,
+            .optimize = optimize,
+        });
+
+        example_exe.linkLibC();
+        example_exe.linkLibrary(facilio);
+        example_exe.addCSourceFile(.{ .file = .{ .dependency = .{ .dependency = facilio_dep, .sub_path = example_path_in_dep } } });
+
+        for (facilio_includes) |dep_path| {
+            example_exe.addIncludePath(facilio_dep.path(dep_path));
+        }
+
+        const example_cmd = b.addRunArtifact(example_exe);
+        const example_run_step = b.step(step_name, "Run the example from facilio");
+        example_run_step.dependOn(&example_cmd.step);
     }
 
-    b.installArtifact(chat_exe);
+    // const chat_exe = b.addExecutable(.{
+    //     .name = "chat_example",
+    //     .target = target,
+    //     .optimize = optimize,
+    // });
+    // chat_exe.linkLibC();
+    // chat_exe.linkLibrary(facilio);
+    // chat_exe.addCSourceFile(.{ .file = .{ .cwd_relative = "src/http-chat.c" } });
+    // for (facilio_includes) |dep_path| {
+    //     chat_exe.addIncludePath(facilio_dep.path(dep_path));
+    // }
+    // b.installArtifact(chat_exe);
 
-    const chat_example_cmd = b.addRunArtifact(chat_exe);
-    chat_example_cmd.step.dependOn(b.getInstallStep());
-    const chat_example_run_step = b.step("run-chat", "Run the WS Chat example from the facilio library");
-    chat_example_run_step.dependOn(&chat_example_cmd.step);
+    // const chat_example_cmd = b.addRunArtifact(chat_exe);
+    // chat_example_cmd.step.dependOn(b.getInstallStep());
+    // const chat_example_run_step = b.step("run-chat", "Run the WS Chat example from the facilio library");
+    // chat_example_run_step.dependOn(&chat_example_cmd.step);
 
     // This declares intent for the executable to be installed into the
     // standard location when the user invokes the "install" step (the default
@@ -166,6 +200,9 @@ pub fn build(b: *std.Build) !void {
 }
 
 fn build_facilio(b: *std.Build, facilio_dep: *std.Build.Dependency, target: std.Build.ResolvedTarget, optimize: std.builtin.OptimizeMode) !*std.Build.Step.Compile {
+    // This funciont is based on the Zap project.
+    // Based on: https://github.com/zigzap/zap/blob/master/facil.io/build.zig
+
     var flags = std.ArrayList([]const u8).init(std.heap.page_allocator);
     if (optimize != .Debug) try flags.append("-Os");
     try flags.append("-Wno-return-type-c-linkage");
