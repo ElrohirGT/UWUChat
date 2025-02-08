@@ -61,12 +61,25 @@ pub fn build(b: *std.Build) void {
             "http/http1.c",
             "http/http_internal.c",
             "http/websockets.c",
+
+            // CLI extensions
+            "cli/fio_cli.c",
+
+            // TLS extensions
+            "tls/fio_tls_missing.c",
+            "tls/fio_tls_openssl.c",
+
+            // Redis engine
+            "redis/redis_engine.c",
         },
     });
     facilio.addIncludePath(facilio_dep.path("lib/facil"));
     facilio.addIncludePath(facilio_dep.path("lib/facil/fiobj"));
     facilio.addIncludePath(facilio_dep.path("lib/facil/http"));
     facilio.addIncludePath(facilio_dep.path("lib/facil/http/parsers"));
+    facilio.addIncludePath(facilio_dep.path("lib/facil/cli"));
+    facilio.addIncludePath(facilio_dep.path("lib/facil/tls"));
+    facilio.addIncludePath(facilio_dep.path("lib/facil/redis"));
 
     // First we create the basic executable
     const exe = b.addExecutable(.{
@@ -80,6 +93,36 @@ pub fn build(b: *std.Build) void {
     exe.linkLibrary(facilio);
     // Finally we add the main.c file to our executable as a source file.
     exe.addCSourceFile(.{ .file = .{ .cwd_relative = "src/main.c" } });
+    exe.addIncludePath(facilio_dep.path("lib/facil"));
+    exe.addIncludePath(facilio_dep.path("lib/facil/fiobj"));
+    exe.addIncludePath(facilio_dep.path("lib/facil/http"));
+    exe.addIncludePath(facilio_dep.path("lib/facil/http/parsers"));
+    exe.addIncludePath(facilio_dep.path("lib/facil/cli"));
+    exe.addIncludePath(facilio_dep.path("lib/facil/tls"));
+    exe.addIncludePath(facilio_dep.path("lib/facil/redis"));
+
+    const chat_exe = b.addExecutable(.{
+        .name = "chat_example",
+        .target = target,
+        .optimize = optimize,
+    });
+    chat_exe.linkLibC();
+    chat_exe.linkLibrary(facilio);
+    chat_exe.addIncludePath(facilio_dep.path("lib/facil"));
+    chat_exe.addIncludePath(facilio_dep.path("lib/facil/fiobj"));
+    chat_exe.addIncludePath(facilio_dep.path("lib/facil/http"));
+    chat_exe.addIncludePath(facilio_dep.path("lib/facil/http/parsers"));
+    chat_exe.addIncludePath(facilio_dep.path("lib/facil/cli"));
+    chat_exe.addIncludePath(facilio_dep.path("lib/facil/tls"));
+    chat_exe.addIncludePath(facilio_dep.path("lib/facil/redis"));
+    chat_exe.addCSourceFile(.{ .file = .{ .cwd_relative = "src/http-client.c" } });
+
+    b.installArtifact(chat_exe);
+
+    const chat_example_cmd = b.addRunArtifact(chat_exe);
+    chat_example_cmd.step.dependOn(b.getInstallStep());
+    const chat_example_run_step = b.step("run-chat", "Run the WS Chat example from the facilio library");
+    chat_example_run_step.dependOn(&chat_example_cmd.step);
 
     // This declares intent for the executable to be installed into the
     // standard location when the user invokes the "install" step (the default
