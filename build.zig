@@ -61,26 +61,23 @@ pub fn build(b: *std.Build) !void {
     // set a preferred release mode, allowing the user to decide how to optimize.
     const optimize = b.standardOptimizeOption(.{});
 
-    // const lib = b.addStaticLibrary(.{
-    //     .name = "UwuChat",
-    //     // In this case the main source file is merely a path, however, in more
-    //     // complicated build scripts, this could be a generated file.
-    //     .root_source_file = b.path("src/root.zig"),
-    //     .target = target,
-    //     .optimize = optimize,
-    // });
-
-    // This declares intent for the library to be installed into the standard
-    // location when the user invokes the "install" step (the default step when
-    // running `zig build`).
-    // b.installArtifact(lib);
-    //
-
     const facilio_dep = b.dependency("facilio", .{
         .target = target,
         .optimize = optimize,
     });
     const facilio = try build_facilio(b, facilio_dep, target, optimize);
+
+    const clay_example_exe = b.addExecutable(.{
+        .name = "clay_example",
+        .target = target,
+        .optimize = optimize,
+    });
+    clay_example_exe.addCSourceFile(.{ .file = .{ .cwd_relative = "src/example.c" } });
+    clay_example_exe.linkLibC();
+
+    const clay_example_cmd = b.addRunArtifact(clay_example_exe);
+    const clay_example_run = b.step("example:clay", "Run the clay example");
+    clay_example_run.dependOn(&clay_example_cmd.step);
 
     // First we create the basic executable
     const exe = b.addExecutable(.{
@@ -126,24 +123,6 @@ pub fn build(b: *std.Build) !void {
         const example_run_step = b.step(step_name, "Run the example from facilio");
         example_run_step.dependOn(&example_cmd.step);
     }
-
-    // const chat_exe = b.addExecutable(.{
-    //     .name = "chat_example",
-    //     .target = target,
-    //     .optimize = optimize,
-    // });
-    // chat_exe.linkLibC();
-    // chat_exe.linkLibrary(facilio);
-    // chat_exe.addCSourceFile(.{ .file = .{ .cwd_relative = "src/http-chat.c" } });
-    // for (facilio_includes) |dep_path| {
-    //     chat_exe.addIncludePath(facilio_dep.path(dep_path));
-    // }
-    // b.installArtifact(chat_exe);
-
-    // const chat_example_cmd = b.addRunArtifact(chat_exe);
-    // chat_example_cmd.step.dependOn(b.getInstallStep());
-    // const chat_example_run_step = b.step("run-chat", "Run the WS Chat example from the facilio library");
-    // chat_example_run_step.dependOn(&chat_example_cmd.step);
 
     // This declares intent for the executable to be installed into the
     // standard location when the user invokes the "install" step (the default
