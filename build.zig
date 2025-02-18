@@ -67,6 +67,14 @@ pub fn build(b: *std.Build) !void {
     });
     const facilio = try build_facilio(b, facilio_dep, target, optimize);
 
+    const raylib_dep = b.dependency("raylib", .{
+        .target = target,
+        .optimize = optimize,
+        .linux_display_backend = .X11,
+        .shared = true,
+    });
+    const raylib = raylib_dep.artifact("raylib");
+
     const clay_example_exe = b.addExecutable(.{
         .name = "clay_example",
         .target = target,
@@ -74,6 +82,8 @@ pub fn build(b: *std.Build) !void {
     });
     clay_example_exe.addCSourceFile(.{ .file = .{ .cwd_relative = "src/example.c" } });
     clay_example_exe.linkLibC();
+    clay_example_exe.linkLibrary(raylib);
+    // clay_example_exe.linkLibrary(raylib);
 
     const clay_example_cmd = b.addRunArtifact(clay_example_exe);
     const clay_example_run = b.step("example:clay", "Run the clay example");
