@@ -1,10 +1,13 @@
 CompileFlags:
   Add:
     - "-Wall"
-    # Adding dependencies for facil.io files in root ./src files
+    # Adding includes for facil.io
     - "-I../deps/facil.io/lib/facil/"
     - "-I../deps/facil.io/lib/facil/cli"
     - "-I../deps/facil.io/lib/facil/tls"
     - "-I../deps/facil.io/lib/facil/http"
     - "-I../deps/facil.io/lib/facil/redis"
     - "-I../deps/facil.io/lib/facil/fiobj"
+
+    # Adding includes for Clay
+    - "-I../deps/clay/"
