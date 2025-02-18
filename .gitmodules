@@ -4,3 +4,6 @@
 [submodule "deps/clay"]
 	path = deps/clay
 	url = git@github.com:nicbarker/clay.git
+[submodule "deps/raylib"]
+	path = deps/raylib
+	url = git@github.com:raysan5/raylib.git
