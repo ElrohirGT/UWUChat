@@ -50,6 +50,19 @@ const facilio_examples = [_][]const u8{
 // declaratively construct a build graph that will be executed by an external
 // runner.
 pub fn build(b: *std.Build) !void {
+    // var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    // defer {
+    //     switch (gpa.deinit()) {
+    //         .leak => std.debug.print("LEAKED MEMORY!", .{}),
+    //         .ok => std.debug.print("NO LEAKS!", .{}),
+    //     }
+    // }
+    //
+    // var alloc = std.heap.ArenaAllocator.init(gpa.allocator());
+    // defer alloc.deinit();
+    //
+    // const arena = alloc.allocator();
+
     // Standard target options allows the person running `zig build` to choose
     // what target to build for. Here we do not override the defaults, which
     // means any target is allowed, and the default is native. Other options
@@ -67,6 +80,17 @@ pub fn build(b: *std.Build) !void {
     });
     const facilio = try build_facilio(b, facilio_dep, target, optimize);
 
+    var lib_paths = get_from_env: {
+        var env = try std.process.getEnvMap(b.allocator);
+        defer env.deinit();
+
+        const nix_hook_contents = env.get("shellHook").?;
+        var seq = std.mem.splitSequence(u8, nix_hook_contents, " ");
+        const paths = seq.next().?;
+
+        break :get_from_env std.mem.splitSequence(u8, paths, ":");
+    };
+
     const raylib_dep = b.dependency("raylib", .{
         .target = target,
         .optimize = optimize,
@@ -81,6 +105,9 @@ pub fn build(b: *std.Build) !void {
         .optimize = optimize,
     });
     clay_example_exe.addCSourceFile(.{ .file = .{ .cwd_relative = "src/example.c" } });
+    while (lib_paths.next()) |path| {
+        clay_example_exe.addLibraryPath(.{ .cwd_relative = path });
+    }
     clay_example_exe.linkLibC();
     clay_example_exe.linkLibrary(raylib);
     // clay_example_exe.linkLibrary(raylib);

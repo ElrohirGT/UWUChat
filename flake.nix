@@ -21,8 +21,33 @@
     devShells = forAllSystems (system: let
       pkgs = nixpkgsFor.${system};
     in {
-      default = pkgs.mkShell {
-        packages = [pkgs.zig_0_13 pkgs.openssl pkgs.websocat];
+      default = pkgs.mkShell rec {
+        packages =
+          [
+            pkgs.zig_0_13
+            pkgs.openssl
+            pkgs.websocat
+          ]
+          ++ (
+            if system == "x86_64-linux"
+            then [
+              pkgs.xorg.libX11
+              pkgs.xorg.libXinerama
+              pkgs.libGLX
+              pkgs.xorg.libXcursor
+              pkgs.xorg.libXext
+              pkgs.xorg.libXfixes
+              pkgs.xorg.libXi
+              pkgs.xorg.libXrandr
+              pkgs.xorg.libXrender
+            ]
+            else []
+          );
+
+        shellHook = ''
+          UWU_LIB_PATH=${pkgs.lib.makeLibraryPath packages}
+          echo Hello World!
+        '';
       };
     });
   };
