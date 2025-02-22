@@ -33,7 +33,7 @@
             then [
               pkgs.xorg.libX11
               pkgs.xorg.libXinerama
-              pkgs.libGLX
+              pkgs.libGL
               pkgs.xorg.libXcursor
               pkgs.xorg.libXext
               pkgs.xorg.libXfixes
