@@ -40,6 +40,9 @@
               pkgs.xorg.libXi
               pkgs.xorg.libXrandr
               pkgs.xorg.libXrender
+              pkgs.wayland-scanner
+              pkgs.libxkbcommon
+              pkgs.wayland
             ]
             else []
           );
