@@ -104,7 +104,7 @@ pub fn build(b: *std.Build) !void {
         .target = target,
         .optimize = optimize,
     });
-    clay_example_exe.addCSourceFile(.{ .file = .{ .cwd_relative = "src/example.c" } });
+    clay_example_exe.addCSourceFile(.{ .file = .{ .cwd_relative = "src/devDocs/example.c" } });
     while (lib_paths.next()) |path| {
         clay_example_exe.addLibraryPath(.{ .cwd_relative = path });
     }
