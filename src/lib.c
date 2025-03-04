@@ -24,10 +24,10 @@ struct UWU_ChatEntry {
 
 // Represents a message history of a certain chat
 struct UWU_History {
-  // A pointer to an array of `ChatEntrie`.
+  // A pointer to an array of `ChatEntry`.
   struct UWU_ChatEntry *messages;
   // The number of chat messages filling the array.
   uint32_t count;
-  // How much memory is left in the array of `ChatEntrie`.
+  // How much memory is left in the array of `ChatEntry`.
   uint32_t capacity;
 };
