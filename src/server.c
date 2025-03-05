@@ -155,7 +155,7 @@ static void on_http_upgrade(http_s *h, char *requested_protocol, size_t len) {
   // Since we already parsed the request we should be able to access data on the
   // params hash
   const FIOBJ key = fiobj_str_new("name", 4);
-  const FIOBJ nickname = fiobj_hash_get(h->params, key);
+  FIOBJ nickname = fiobj_hash_get(h->params, key);
 
   if (nickname == FIOBJ_INVALID) {
     fprintf(stderr, "400 - NO USERNAME SUPPLIED!\n");
@@ -171,7 +171,9 @@ static void on_http_upgrade(http_s *h, char *requested_protocol, size_t len) {
     return;
   }
 
-  fprintf(stderr, "The nickname is valid! Connecting...\n");
+  nickname = fiobj_str_copy(nickname);
+  fprintf(stderr, "The nickname `%s` is valid! Connecting...\n",
+          fiobj_obj2cstr(nickname).data);
 
   /* Test for upgrade protocol (websocket vs. sse) */
   if (len == 3 && requested_protocol[1] == 's') {
