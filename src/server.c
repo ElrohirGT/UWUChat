@@ -92,9 +92,12 @@ int main(int argc, char const *argv[]) {
   }
   /* optimize WebSocket pub/sub for multi-connection broadcasting */
   websocket_optimize4broadcasts(WEBSOCKET_OPTIMIZE_PUBSUB, 1);
+
   /* listen for inncoming connections */
-  if (http_listen(fio_cli_get("-p"), fio_cli_get("-b"),
-                  .on_request = on_http_request, .on_upgrade = on_http_upgrade,
+  const char *port = fio_cli_get("-p");
+  const char *host = fio_cli_get("-b");
+  if (http_listen(port, host, .on_request = on_http_request,
+                  .on_upgrade = on_http_upgrade,
                   .max_body_size = (fio_cli_get_i("-maxbd") * 1024 * 1024),
                   .ws_max_msg_size = (fio_cli_get_i("-maxms") * 1024),
                   .public_folder = fio_cli_get("-public"),
@@ -106,6 +109,9 @@ int main(int argc, char const *argv[]) {
         "ERROR: facil.io couldn't initialize HTTP service (already running?)");
     exit(1);
   }
+
+  fprintf(stderr, "Listening on %s:%s...\n", host, port);
+
   fio_start(.threads = fio_cli_get_i("-t"), .workers = fio_cli_get_i("-w"));
   fio_cli_end();
   fio_tls_destroy(tls);
