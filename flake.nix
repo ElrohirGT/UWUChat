@@ -27,6 +27,7 @@
             pkgs.zig_0_13
             pkgs.openssl
             pkgs.websocat
+            pkgs.entr
           ]
           ++ (
             if system == "x86_64-linux"
@@ -49,7 +50,7 @@
 
         shellHook = ''
           UWU_LIB_PATH=${pkgs.lib.makeLibraryPath packages}
-          echo Hello World!
+          alias server_dev="find src -type f -iname *.c | entr -r zig build run -- -b 127.0.0.1 -p 8080"
         '';
       };
     });
