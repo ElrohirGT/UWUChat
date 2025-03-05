@@ -127,7 +127,7 @@ pub fn build(b: *std.Build) !void {
     exe.linkLibC();
     exe.linkLibrary(facilio);
     // Finally we add the main.c file to our executable as a source file.
-    exe.addCSourceFile(.{ .file = .{ .cwd_relative = "src/main.c" } });
+    exe.addCSourceFile(.{ .file = .{ .cwd_relative = "src/server.c" } });
     for (facilio_includes) |dep_path| {
         exe.addIncludePath(facilio_dep.path(dep_path));
     }
