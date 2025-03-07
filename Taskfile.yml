@@ -1,0 +1,27 @@
+version: '3'
+
+tasks:
+  default:
+    cmds:
+      - task --list-all
+    silent: true
+    desc: "List all tasks available"
+
+  server_build:
+    cmds:
+      - zig build
+    silent: true
+    desc: "Build the server executable for debug mode"
+
+  server_dev:
+    cmds:
+      - find src -type f -iname *.c | entr -r zig build run -- -b 127.0.0.1 -p 8080
+    silent: true
+    desc: "Compile and run the server with hot reloading"
+
+  server_debug:
+    deps: [server_build]
+    cmds:
+      - gf2 -x server.gdb --args ./zig-out/bin/uwuchat_server -p 8080 -b 127.0.0.1
+    silent: true
+    desc: "Compile and debug the server with a GDB UI client "

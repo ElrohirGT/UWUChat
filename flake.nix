@@ -20,36 +20,38 @@
   in {
     devShells = forAllSystems (system: let
       pkgs = nixpkgsFor.${system};
+      extraPkgs =
+        if system == "x86_64-linux"
+        then [
+          pkgs.xorg.libX11
+          pkgs.xorg.libXinerama
+          pkgs.libGL
+          pkgs.xorg.libXcursor
+          pkgs.xorg.libXext
+          pkgs.xorg.libXfixes
+          pkgs.xorg.libXi
+          pkgs.xorg.libXrandr
+          pkgs.xorg.libXrender
+          pkgs.wayland-scanner
+          pkgs.libxkbcommon
+          pkgs.wayland
+        ]
+        else [];
     in {
-      default = pkgs.mkShell rec {
+      default = pkgs.mkShell {
         packages =
           [
             pkgs.zig_0_13
             pkgs.openssl
             pkgs.websocat
             pkgs.entr
+            pkgs.gf
+            pkgs.go-task
           ]
-          ++ (
-            if system == "x86_64-linux"
-            then [
-              pkgs.xorg.libX11
-              pkgs.xorg.libXinerama
-              pkgs.libGL
-              pkgs.xorg.libXcursor
-              pkgs.xorg.libXext
-              pkgs.xorg.libXfixes
-              pkgs.xorg.libXi
-              pkgs.xorg.libXrandr
-              pkgs.xorg.libXrender
-              pkgs.wayland-scanner
-              pkgs.libxkbcommon
-              pkgs.wayland
-            ]
-            else []
-          );
+          ++ extraPkgs;
 
         shellHook = ''
-          UWU_LIB_PATH=${pkgs.lib.makeLibraryPath packages}
+          UWU_LIB_PATH=${pkgs.lib.makeLibraryPath extraPkgs}
           alias server_dev="find src -type f -iname *.c | entr -r zig build run -- -b 127.0.0.1 -p 8080"
         '';
       };
