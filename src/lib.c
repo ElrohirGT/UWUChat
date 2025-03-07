@@ -1,3 +1,4 @@
+#include "fiobject.h"
 #include <stdarg.h>
 #include <stddef.h>
 #include <stdint.h>
@@ -169,10 +170,49 @@ Strings
 struct UWU_String {
   // Contains all the data of this string
   // CAREFUL: It may or may not be a "null terminated string"!
-  uint8_t *data;
+  char *data;
   // The length of data that is considered to be "this string"
   size_t length;
 };
+
+// Copies a fiobj into a `UWU_String`.
+//
+// `obj` must be a `FIOBJ_T_STRING`, if not this function panics!
+//
+// To free this data please see `UWU_String_free`.
+struct UWU_String *UWU_String_copyFromFio(FIOBJ obj, UWU_ERR err) {
+  if (!FIOBJ_TYPE_IS(obj, FIOBJ_T_STRING)) {
+    UWU_PANIC("Trying to copy from a Fio object that is not a string!");
+    return NULL;
+  }
+
+  fio_str_info_s c_str = fiobj_obj2cstr(obj);
+  char *data = malloc(c_str.len);
+  for (size_t i = 0; i < c_str.len; i++) {
+    data[i] = c_str.data[i];
+  }
+
+  struct UWU_String *str = malloc(sizeof(struct UWU_String));
+
+  if (str == NULL) {
+    err = UWU_MALLOC_ERROR;
+    return NULL;
+  }
+
+  str->data = data;
+  str->length = c_str.len;
+
+  return str;
+}
+
+// Creates a new `UWU_String`.
+//
+// This method should only be used if you know that the returned `UWU_String`
+// will live for as long as `char*` data will.
+struct UWU_String UWU_String_new(char *data, size_t length) {
+  struct UWU_String str = {.data = data, .length = length};
+  return str;
+}
 
 uint8_t UWU_String_getChar(struct UWU_String *str, size_t idx) {
   if (idx >= 0 && idx < str->length) {
@@ -183,14 +223,14 @@ uint8_t UWU_String_getChar(struct UWU_String *str, size_t idx) {
   return 0;
 }
 
-// Checks if the given
+// Checks if the given `a` string is equal to the other `b` string.
 bool UWU_String_equal(struct UWU_String *a, struct UWU_String *b) {
   if (a->length != b->length) {
     return FALSE;
   }
 
   for (size_t i = 0; i < a->length; i++) {
-    if (a->data[i] != b->data[i]) {
+    if (UWU_String_getChar(a, i) != UWU_String_getChar(b, i)) {
       return FALSE;
     }
   }

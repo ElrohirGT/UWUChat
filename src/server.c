@@ -101,7 +101,7 @@ static fio_str_info_s GROUP_CHAT_CHANNEL = {.data = "~", .len = 4};
 
 // Saves a collection of usernames.
 struct UWU_UserCollection {
-  struct UWU_String *data;
+  struct UWU_String (*data)[];
   size_t length;
   size_t capacity;
 };
@@ -114,7 +114,7 @@ struct UWU_UserCollection {
 struct UWU_UserCollection UWU_UserCollection_new(struct UWU_Arena *alloc,
                                                  size_t capacity, size_t *err) {
   size_t byte_capacity = sizeof(struct UWU_String) * capacity;
-  struct UWU_String *data = UWU_Arena_alloc(alloc, byte_capacity, err);
+  struct UWU_String(*data)[] = UWU_Arena_alloc(alloc, byte_capacity, err);
   struct UWU_UserCollection col = {};
 
   // This means an error occurred!
@@ -149,7 +149,9 @@ void UWU_UserCollection_addUser(struct UWU_UserCollection *col,
     return;
   }
 
-  col->data[col->length] = val;
+  size_t idx = col->length;
+  struct UWU_String(*data)[] = col->data;
+  (*data)[idx] = val;
   col->length += 1;
 }
 
@@ -159,7 +161,7 @@ void UWU_UserCollection_removeByUsername(struct UWU_UserCollection *col,
                                          struct UWU_String *val, UWU_ERR err) {
   size_t max = col->length;
   for (size_t i = 0; i < max; i++) {
-    struct UWU_String current = col->data[i];
+    struct UWU_String current = (*(col->data))[i];
     if (UWU_String_equal(&current, val)) {
       // FIXME: Remove username...
     }
@@ -283,15 +285,15 @@ static void on_http_upgrade(http_s *h, char *requested_protocol, size_t len) {
   // Since we already parsed the request we should be able to access data on the
   // params hash
   const FIOBJ key = fiobj_str_new("name", 4);
-  FIOBJ nickname = fiobj_hash_get(h->params, key);
+  FIOBJ fio_nickname = fiobj_hash_get(h->params, key);
 
-  if (nickname == FIOBJ_INVALID) {
+  if (fio_nickname == FIOBJ_INVALID) {
     fprintf(stderr, "400 - NO USERNAME SUPPLIED!\n");
     http_send_error(h, 400);
     return;
   }
 
-  fio_str_info_s c_nickname = fiobj_obj2cstr(nickname);
+  fio_str_info_s c_nickname = fiobj_obj2cstr(fio_nickname);
   int is_group_chat = strcmp(c_nickname.data, "~") == 0;
   int is_too_large = c_nickname.len > 255;
 
@@ -305,9 +307,17 @@ static void on_http_upgrade(http_s *h, char *requested_protocol, size_t len) {
     return;
   }
 
-  nickname = fiobj_str_copy(nickname);
   fprintf(stderr, "The nickname `%s` is valid! Connecting...\n",
           c_nickname.data);
+
+  UWU_ERR err = NO_ERROR;
+  struct UWU_String *uwu_nickname = UWU_String_copyFromFio(fio_nickname, err);
+
+  if (err != NO_ERROR) {
+    fprintf(stderr, "ERROR: Can't copy username from Facil.io into local "
+                    "representation!\n");
+    http_send_error(h, 500);
+  }
 
   /* Test for upgrade protocol (websocket vs. sse) */
   if (len == 3 && requested_protocol[1] == 's') {
@@ -316,7 +326,7 @@ static void on_http_upgrade(http_s *h, char *requested_protocol, size_t len) {
               c_nickname.data);
     }
     http_upgrade2sse(h, .on_open = sse_on_open, .on_close = sse_on_close,
-                     .udata = (void *)nickname);
+                     .udata = (void *)fio_nickname);
   } else if (len == 9 && requested_protocol[1] == 'e') {
     if (fio_cli_get_bool("-v")) {
       fprintf(stderr, "* (%d) new WebSocket connection: %s.\n", getpid(),
@@ -324,12 +334,12 @@ static void on_http_upgrade(http_s *h, char *requested_protocol, size_t len) {
     }
     http_upgrade2ws(h, .on_message = ws_on_message, .on_open = ws_on_open,
                     .on_shutdown = ws_on_shutdown, .on_close = ws_on_close,
-                    .udata = (void *)nickname);
+                    .udata = uwu_nickname);
   } else {
     fprintf(stderr, "WARNING: unrecognized HTTP upgrade request: %s\n",
             requested_protocol);
     http_send_error(h, 400);
-    fiobj_free(nickname); // we didn't use this
+    // fiobj_free(fio_nick_copy); // we didn't use this
   }
 }
 
@@ -387,7 +397,18 @@ static void ws_on_open(ws_s *ws) {
   websocket_subscribe(ws, .channel = GROUP_CHAT_CHANNEL);
   websocket_write(
       ws, (fio_str_info_s){.data = "Welcome to the chat-room.", .len = 25}, 1);
-  FIOBJ tmp = fiobj_str_copy((FIOBJ)websocket_udata_get(ws));
+
+  UWU_ERR err = NO_ERROR;
+
+  // 1. Add the user as an active user.
+  const struct UWU_String *userName = websocket_udata_get(ws);
+  UWU_UserCollection_addUser(&active_users_collection, *userName, err);
+
+  // TODO: Initialize user state...
+
+  // FIXME: Change message!
+  // 3. Notify other clients that this user has recently connected...
+  FIOBJ tmp = fiobj_str_new(userName->data, userName->length);
   fiobj_str_write(tmp, " joind the chat.", 16);
   fio_publish(.channel = GROUP_CHAT_CHANNEL, .message = fiobj_obj2cstr(tmp));
   fiobj_free(tmp);
