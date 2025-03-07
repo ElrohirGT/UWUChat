@@ -53,6 +53,8 @@ Mitchel and Johana, which means messages will be delivered twice unless using
 two different browser windows.
 */
 
+#include "lib.c"
+
 /* Include the core library */
 #include "fiobj_hash.h"
 #include "fiobj_str.h"
@@ -66,10 +68,123 @@ two different browser windows.
 #include <redis_engine.h>
 #include <stdint.h>
 #include <stdio.h>
+#include <stdlib.h>
+
+/* *****************************************************************************
+Server State
+***************************************************************************** */
+
+// Collection that saves all the chat histories from all usernames.
+struct UWU_ChatHistoryCollection {
+  struct UWU_History *data;
+  uint8_t length;
+  uint8_t capacity;
+};
+
+// Global group chat
+static fio_str_info_s GROUP_CHAT_CHANNEL = {.data = "~", .len = 4};
+
+// Si tenemos "n" usuarios conectados entonces tendremos una cantidad de chats
+// igual a:
+//
+//    n!      (n-1)n
+// -------- = ------		(siempre que n >= 2)
+// 2!(n-2)!     2
+//
+// Esta función tiene crecimiento cuadrático, por lo que es importante hacer que
+// el acceso al historial de mensajes de cada chat no crezca en complejidad a la
+// misma velocidad. Por esto es que vamos a usar un hashmap:
+//
+// * Las llaves serán la combinación de los dos usernames ordenados
+// alfabéticamente.
+// * Los valores serán los historiales de mensajes.
+
+// Saves a collection of usernames.
+struct UWU_UserCollection {
+  struct UWU_String *data;
+  size_t length;
+  size_t capacity;
+};
+
+// Creates a new collection using the specified arena to allocate.
+//
+// * alloc: The arena allocator to use.
+// * capacity: The amount of usernames this collection could hold.
+// * err: The error param, refer to the start of lib.c for an explanation.
+struct UWU_UserCollection UWU_UserCollection_new(struct UWU_Arena *alloc,
+                                                 size_t capacity, size_t *err) {
+  size_t byte_capacity = sizeof(struct UWU_String) * capacity;
+  struct UWU_String *data = UWU_Arena_alloc(alloc, byte_capacity, err);
+  struct UWU_UserCollection col = {};
+
+  // This means an error occurred!
+  // Most likely an allocation error since only UWU_Arena_alloc has been called
+  // before checking...
+  if (err != NULL) {
+    return col;
+  }
+
+  col.data = data;
+  col.length = 0;
+  col.capacity = capacity;
+
+  return col;
+}
+
+static UWU_ERR UWU_NO_SPACE_LEFT = (size_t *)1;
+// Adds a new value to the collection. This operation can fail if no space is
+// available for the collection.
+//
+// * col: The collection to add a user to.
+// * val: The username to add.
+// * err: The err parameter, refer back to the start of lib.c for an explanation
+//
+// Success: Stores the item in the collection.
+// Failure: Sets the err value to `UWU_NO_SPACE_LEFT`.
+void UWU_UserCollection_addUser(struct UWU_UserCollection *col,
+                                struct UWU_String val, UWU_ERR err) {
+  int no_space_left = col->length >= col->capacity;
+  if (no_space_left) {
+    err = UWU_NO_SPACE_LEFT;
+    return;
+  }
+
+  col->data[col->length] = val;
+  col->length += 1;
+}
+
+// Tries to remove a user by it's username. This operation can fail if no user
+// is found with the given username.
+void UWU_UserCollection_removeByUsername(struct UWU_UserCollection *col,
+                                         struct UWU_String *val, UWU_ERR err) {
+  size_t max = col->length;
+  for (size_t i = 0; i < max; i++) {
+    struct UWU_String current = col->data[i];
+    if (UWU_String_equal(&current, val)) {
+      // FIXME: Remove username...
+    }
+  }
+}
+
+static struct UWU_UserCollection active_users_collection;
+
+// Initializes the server state |
+struct UWU_Arena initialize_server_state(UWU_ERR err) {
+  const size_t MAX_ACTIVE_USERS = 255;
+  struct UWU_Arena global_arena =
+      UWU_Arena_init(sizeof(struct UWU_String) * MAX_ACTIVE_USERS, err);
+
+  active_users_collection =
+      UWU_UserCollection_new(&global_arena, MAX_ACTIVE_USERS, err);
+  // TODO: Initialize other server state...
+
+  return global_arena;
+}
 
 /* *****************************************************************************
 The main function
-***************************************************************************** */
+*****************************************************************************
+*/
 
 /* HTTP request handler */
 static void on_http_request(http_s *h);
@@ -93,7 +208,10 @@ int main(int argc, char const *argv[]) {
   /* optimize WebSocket pub/sub for multi-connection broadcasting */
   websocket_optimize4broadcasts(WEBSOCKET_OPTIMIZE_PUBSUB, 1);
 
-  /* listen for inncoming connections */
+  UWU_ERR err = NO_ERROR;
+  struct UWU_Arena global_arena = initialize_server_state(err);
+
+  /* listen for incoming connections */
   const char *port = fio_cli_get("-p");
   const char *host = fio_cli_get("-b");
   if (http_listen(port, host, .on_request = on_http_request,
@@ -105,14 +223,18 @@ int main(int argc, char const *argv[]) {
                   .timeout = fio_cli_get_i("-keep-alive"), .tls = tls,
                   .ws_timeout = fio_cli_get_i("-ping")) == -1) {
     /* listen failed ?*/
+    UWU_Arena_deinit(&global_arena);
     perror(
         "ERROR: facil.io couldn't initialize HTTP service (already running?)");
     exit(1);
   }
 
   fprintf(stderr, "Listening on %s:%s...\n", host, port);
-
   fio_start(.threads = fio_cli_get_i("-t"), .workers = fio_cli_get_i("-w"));
+
+  // Cleaning up...
+  UWU_Arena_deinit(&global_arena);
+
   fio_cli_end();
   fio_tls_destroy(tls);
   return 0;
@@ -169,9 +291,15 @@ static void on_http_upgrade(http_s *h, char *requested_protocol, size_t len) {
     return;
   }
 
-  char *c_nickname = fiobj_obj2cstr(nickname).data;
-  int is_group_chat = strcmp(c_nickname, "~") == 0;
-  if (is_group_chat) {
+  fio_str_info_s c_nickname = fiobj_obj2cstr(nickname);
+  int is_group_chat = strcmp(c_nickname.data, "~") == 0;
+  int is_too_large = c_nickname.len > 255;
+
+  if (is_too_large) {
+    fprintf(stderr, "Username too large! (length: %zu)\n", c_nickname.len);
+  }
+
+  if (is_group_chat || is_too_large) {
     fprintf(stderr, "400 - INVALID USERNAME SUPPLIED!\n");
     http_send_error(h, 400);
     return;
@@ -179,20 +307,20 @@ static void on_http_upgrade(http_s *h, char *requested_protocol, size_t len) {
 
   nickname = fiobj_str_copy(nickname);
   fprintf(stderr, "The nickname `%s` is valid! Connecting...\n",
-          fiobj_obj2cstr(nickname).data);
+          c_nickname.data);
 
   /* Test for upgrade protocol (websocket vs. sse) */
   if (len == 3 && requested_protocol[1] == 's') {
     if (fio_cli_get_bool("-v")) {
       fprintf(stderr, "* (%d) new SSE connection: %s.\n", getpid(),
-              fiobj_obj2cstr(nickname).data);
+              c_nickname.data);
     }
     http_upgrade2sse(h, .on_open = sse_on_open, .on_close = sse_on_close,
                      .udata = (void *)nickname);
   } else if (len == 9 && requested_protocol[1] == 'e') {
     if (fio_cli_get_bool("-v")) {
       fprintf(stderr, "* (%d) new WebSocket connection: %s.\n", getpid(),
-              fiobj_obj2cstr(nickname).data);
+              c_nickname.data);
     }
     http_upgrade2ws(h, .on_message = ws_on_message, .on_open = ws_on_open,
                     .on_shutdown = ws_on_shutdown, .on_close = ws_on_close,
@@ -206,12 +334,6 @@ static void on_http_upgrade(http_s *h, char *requested_protocol, size_t len) {
 }
 
 /* *****************************************************************************
-Globals
-***************************************************************************** */
-
-static fio_str_info_s CHAT_CANNEL = {.data = "chat", .len = 4};
-
-/* *****************************************************************************
 HTTP SSE (Server Sent Events) Callbacks
 ***************************************************************************** */
 
@@ -223,18 +345,18 @@ static void sse_on_open(http_sse_s *sse) {
   http_sse_write(sse, .data = {.data = "Welcome to the SSE chat channel.\r\n"
                                        "You can only listen, not write.",
                                .len = 65});
-  http_sse_subscribe(sse, .channel = CHAT_CANNEL);
+  http_sse_subscribe(sse, .channel = GROUP_CHAT_CHANNEL);
   http_sse_set_timout(sse, fio_cli_get_i("-ping"));
   FIOBJ tmp = fiobj_str_copy((FIOBJ)sse->udata);
   fiobj_str_write(tmp, " joind the chat only to listen.", 31);
-  fio_publish(.channel = CHAT_CANNEL, .message = fiobj_obj2cstr(tmp));
+  fio_publish(.channel = GROUP_CHAT_CHANNEL, .message = fiobj_obj2cstr(tmp));
   fiobj_free(tmp);
 }
 
 static void sse_on_close(http_sse_s *sse) {
   /* Let everyone know we left the chat */
   fiobj_str_write((FIOBJ)sse->udata, " left the chat.", 15);
-  fio_publish(.channel = CHAT_CANNEL,
+  fio_publish(.channel = GROUP_CHAT_CHANNEL,
               .message = fiobj_obj2cstr((FIOBJ)sse->udata));
   /* free the nickname */
   fiobj_free((FIOBJ)sse->udata);
@@ -250,21 +372,27 @@ static void ws_on_message(ws_s *ws, fio_str_info_s msg, uint8_t is_text) {
   fiobj_str_write(str, ": ", 2);
   fiobj_str_write(str, msg.data, msg.len);
   // publish
-  fio_publish(.channel = CHAT_CANNEL, .message = fiobj_obj2cstr(str));
+  fio_publish(.channel = GROUP_CHAT_CHANNEL, .message = fiobj_obj2cstr(str));
   // free the string
   fiobj_free(str);
   (void)is_text; // we don't care.
   (void)ws;      // this could be used to send an ACK, but we don't.
 }
+
+// When a new user connects to the server we need to do a lot of stuff:
+// 1. Add the user as an active user.
+// 2. Initialize all it's state.
+// 3. Notify other clients that this user has recently connected.
 static void ws_on_open(ws_s *ws) {
-  websocket_subscribe(ws, .channel = CHAT_CANNEL);
+  websocket_subscribe(ws, .channel = GROUP_CHAT_CHANNEL);
   websocket_write(
       ws, (fio_str_info_s){.data = "Welcome to the chat-room.", .len = 25}, 1);
   FIOBJ tmp = fiobj_str_copy((FIOBJ)websocket_udata_get(ws));
   fiobj_str_write(tmp, " joind the chat.", 16);
-  fio_publish(.channel = CHAT_CANNEL, .message = fiobj_obj2cstr(tmp));
+  fio_publish(.channel = GROUP_CHAT_CHANNEL, .message = fiobj_obj2cstr(tmp));
   fiobj_free(tmp);
 }
+
 static void ws_on_shutdown(ws_s *ws) {
   websocket_write(
       ws, (fio_str_info_s){.data = "Server shutting down, goodbye.", .len = 30},
@@ -274,7 +402,8 @@ static void ws_on_shutdown(ws_s *ws) {
 static void ws_on_close(intptr_t uuid, void *udata) {
   /* Let everyone know we left the chat */
   fiobj_str_write((FIOBJ)udata, " left the chat.", 15);
-  fio_publish(.channel = CHAT_CANNEL, .message = fiobj_obj2cstr((FIOBJ)udata));
+  fio_publish(.channel = GROUP_CHAT_CHANNEL,
+              .message = fiobj_obj2cstr((FIOBJ)udata));
   /* free the nickname */
   fiobj_free((FIOBJ)udata);
   (void)uuid; // we don't use the ID
