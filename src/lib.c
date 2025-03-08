@@ -101,33 +101,45 @@ Arenas
 // The arena is a simple abstraction over the concept of storing data on the
 // heap. Think of it as a fixed append-only stack, you can only append elements
 // to the end or remove them all together.
-struct UWU_Arena {
+typedef struct {
   size_t capacity;
   size_t size;
   uint8_t *data;
-};
+} UWU_Arena;
 
-static UWU_ERR UWU_MALLOC_ERROR = (UWU_ERR)1;
+static UWU_ERR UWU_ERR_MALLOC_ERROR = (UWU_ERR)1;
 
 // Initializes a new arena with the specified capacity!
-struct UWU_Arena UWU_Arena_init(size_t capacity, UWU_ERR err) {
-  void *data = malloc(sizeof(uint8_t) * capacity);
+UWU_Arena UWU_Arena_init(size_t capacity, UWU_ERR err) {
+  UWU_Arena arena = {};
+  arena.data = malloc(sizeof(uint8_t) * capacity);
 
-  struct UWU_Arena arena = {};
-
-  if (data == NULL) {
-    err = UWU_MALLOC_ERROR;
+  if (arena.data == NULL) {
+    err = UWU_ERR_MALLOC_ERROR;
     return arena;
   }
 
   arena.capacity = capacity;
   arena.size = 0;
-  arena.data = data;
 
   return arena;
 }
 
-static UWU_ERR UWU_ARENA_FAILED_ALLOCATION = (UWU_ERR)1;
+// {
+// let arena = malloc()
+//
+// while (true) {
+//
+// let a = arena.alloc(adlfkjlasdf)
+// let b = arena.alloc(asdkfjalskdjf)
+//
+// arena.reset()
+// }
+//
+// free(arena)
+// }
+
+static UWU_ERR UWU_ERR_ARENA_FAILED_ALLOCATION = (UWU_ERR)1;
 // Tries to allocate on the arena.
 //
 // - arena: The specific arena to use for allocation.
@@ -136,13 +148,13 @@ static UWU_ERR UWU_ARENA_FAILED_ALLOCATION = (UWU_ERR)1;
 //
 // Success: Returns a pointer to the first byte of the memory region requested.
 // Failure: Sets err equal to `UWU_ARENA_FAILED_ALLOCATION`.
-void *UWU_Arena_alloc(struct UWU_Arena *arena, size_t size, size_t *err) {
-  bool has_space = arena->size + size < arena->capacity;
+void *UWU_Arena_alloc(UWU_Arena *arena, size_t size, size_t *err) {
+  bool has_space = arena->size + size <= arena->capacity;
   if (!has_space) {
-    err = UWU_ARENA_FAILED_ALLOCATION;
+    err = UWU_ERR_ARENA_FAILED_ALLOCATION;
     return NULL;
   } else {
-    uint8_t *mem_start = &arena->data[arena->size];
+    void *mem_start = &arena->data[arena->size];
     arena->size += size;
     return mem_start;
   }
@@ -150,11 +162,11 @@ void *UWU_Arena_alloc(struct UWU_Arena *arena, size_t size, size_t *err) {
 
 // Resets the arena for future use.
 // IT DOES NOT FREE THE MEMORY OF THE ARENA! Use `deinit` for that.
-void UWU_Arena_reset(struct UWU_Arena *arena) { arena->size = 0; }
+void UWU_Arena_reset(UWU_Arena *arena) { arena->size = 0; }
 
 // Resets and frees all memory associated with this arena.
 // DO NOT USE an arena that has already been deinited!
-void UWU_Arena_deinit(struct UWU_Arena *arena) {
+void UWU_Arena_deinit(UWU_Arena *arena) {
   arena->capacity = 0;
   arena->size = 0;
   free(arena->data);
@@ -164,23 +176,45 @@ void UWU_Arena_deinit(struct UWU_Arena *arena) {
 Strings
 ***************************************************************************** */
 
+// SoyUnaCadena\0
+// Soy
+// UnaCadeasdlfkjliqjwelkjasdf\0
+
 // Represents a string "slice"
 //
 // Only the creator of the original slice needs to free this memory!
-struct UWU_String {
+typedef struct {
   // Contains all the data of this string
+  //
   // CAREFUL: It may or may not be a "null terminated string"!
   char *data;
   // The length of data that is considered to be "this string"
   size_t length;
-};
+} UWU_String;
+
+// Converts from a `UWU_String` to a null terminated string.
+char *UWU_String_toCstr(UWU_String *str, UWU_ERR err) {
+  char *c_str = malloc(str->length + 1);
+
+  if (c_str == NULL) {
+    err = UWU_ERR_MALLOC_ERROR;
+    return c_str;
+  }
+
+  for (size_t i = 0; i < str->length + 1; i++) {
+    c_str[i] = str->data[i];
+  }
+  c_str[str->length] = 0;
+
+  return c_str;
+}
 
 // Copies a fiobj into a `UWU_String`.
 //
 // `obj` must be a `FIOBJ_T_STRING`, if not this function panics!
 //
 // To free this data please see `UWU_String_free`.
-struct UWU_String *UWU_String_copyFromFio(FIOBJ obj, UWU_ERR err) {
+UWU_String *UWU_String_copyFromFio(FIOBJ obj, UWU_ERR err) {
   if (!FIOBJ_TYPE_IS(obj, FIOBJ_T_STRING)) {
     UWU_PANIC("Trying to copy from a Fio object that is not a string!");
     return NULL;
@@ -192,10 +226,10 @@ struct UWU_String *UWU_String_copyFromFio(FIOBJ obj, UWU_ERR err) {
     data[i] = c_str.data[i];
   }
 
-  struct UWU_String *str = malloc(sizeof(struct UWU_String));
+  UWU_String *str = malloc(sizeof(UWU_String));
 
   if (str == NULL) {
-    err = UWU_MALLOC_ERROR;
+    err = UWU_ERR_MALLOC_ERROR;
     return NULL;
   }
 
@@ -209,22 +243,33 @@ struct UWU_String *UWU_String_copyFromFio(FIOBJ obj, UWU_ERR err) {
 //
 // This method should only be used if you know that the returned `UWU_String`
 // will live for as long as `char*` data will.
-struct UWU_String UWU_String_new(char *data, size_t length) {
-  struct UWU_String str = {.data = data, .length = length};
+UWU_String UWU_String_new(char *data, size_t length) {
+  UWU_String str = {.data = data, .length = length};
   return str;
 }
 
-uint8_t UWU_String_getChar(struct UWU_String *str, size_t idx) {
+uint8_t UWU_String_getChar(UWU_String *str, size_t idx) {
   if (idx >= 0 && idx < str->length) {
     return str->data[idx];
   }
 
-  UWU_PANIC("Out of bound access on String `%s` with Idx `%d`", str, idx);
+  UWU_ERR err = NO_ERROR;
+  char *c_str = UWU_String_toCstr(str, err);
+
+  if (err != NO_ERROR) {
+    UWU_PANIC("Can't convert UWU_String into C_str! (len: %d, data: %s)",
+              str->length, str->data);
+    return 0;
+  }
+
+  UWU_PANIC("Out of bound access on String `%s` with Idx `%d`", c_str, idx);
+  free(c_str);
+
   return 0;
 }
 
 // Checks if the given `a` string is equal to the other `b` string.
-bool UWU_String_equal(struct UWU_String *a, struct UWU_String *b) {
+bool UWU_String_equal(UWU_String *a, UWU_String *b) {
   if (a->length != b->length) {
     return FALSE;
   }
@@ -242,19 +287,19 @@ bool UWU_String_equal(struct UWU_String *a, struct UWU_String *b) {
 //
 // The ChatEntry should own it's memory! So it should receive a copy of
 // `content` and `origin_username`.
-struct UWU_ChatEntry {
+typedef struct {
   // The content of the message.
-  struct UWU_String content;
+  UWU_String content;
   // The username of the person sending the message.
-  struct UWU_String origin_username;
-};
+  UWU_String origin_username;
+} UWU_ChatEntry;
 
 // Represents a message history of a certain chat
-struct UWU_History {
+typedef struct {
   // A pointer to an array of `ChatEntry`.
-  struct UWU_ChatEntry *messages;
+  UWU_ChatEntry *messages;
   // The number of chat messages filling the array.
   uint32_t count;
   // How much memory is left in the array of `ChatEntry`.
   uint32_t capacity;
-};
+} UWU_History;

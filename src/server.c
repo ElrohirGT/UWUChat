@@ -75,11 +75,11 @@ Server State
 ***************************************************************************** */
 
 // Collection that saves all the chat histories from all usernames.
-struct UWU_ChatHistoryCollection {
-  struct UWU_History *data;
+typedef struct {
+  UWU_History *data;
   uint8_t length;
   uint8_t capacity;
-};
+} UWU_ChatHistoryCollection;
 
 // Global group chat
 static fio_str_info_s GROUP_CHAT_CHANNEL = {.data = "~", .len = 4};
@@ -87,7 +87,7 @@ static fio_str_info_s GROUP_CHAT_CHANNEL = {.data = "~", .len = 4};
 // Si tenemos "n" usuarios conectados entonces tendremos una cantidad de chats
 // igual a:
 //
-//    n!      (n-1)n
+//    n!			(n-1)n
 // -------- = ------		(siempre que n >= 2)
 // 2!(n-2)!     2
 //
@@ -100,22 +100,23 @@ static fio_str_info_s GROUP_CHAT_CHANNEL = {.data = "~", .len = 4};
 // * Los valores serán los historiales de mensajes.
 
 // Saves a collection of usernames.
-struct UWU_UserCollection {
-  struct UWU_String (*data)[];
+typedef struct {
   size_t length;
   size_t capacity;
-};
+  UWU_String (*data)[];
+  // UWU_String *data;
+} UWU_UserCollection;
 
 // Creates a new collection using the specified arena to allocate.
 //
 // * alloc: The arena allocator to use.
 // * capacity: The amount of usernames this collection could hold.
 // * err: The error param, refer to the start of lib.c for an explanation.
-struct UWU_UserCollection UWU_UserCollection_new(struct UWU_Arena *alloc,
-                                                 size_t capacity, size_t *err) {
-  size_t byte_capacity = sizeof(struct UWU_String) * capacity;
-  struct UWU_String(*data)[] = UWU_Arena_alloc(alloc, byte_capacity, err);
-  struct UWU_UserCollection col = {};
+UWU_UserCollection UWU_UserCollection_new(UWU_Arena *alloc, size_t capacity,
+                                          size_t *err) {
+  UWU_UserCollection col = {};
+  size_t byte_capacity = sizeof(UWU_String[capacity]);
+  col.data = UWU_Arena_alloc(alloc, byte_capacity, err);
 
   // This means an error occurred!
   // Most likely an allocation error since only UWU_Arena_alloc has been called
@@ -124,14 +125,13 @@ struct UWU_UserCollection UWU_UserCollection_new(struct UWU_Arena *alloc,
     return col;
   }
 
-  col.data = data;
   col.length = 0;
   col.capacity = capacity;
 
   return col;
 }
 
-static UWU_ERR UWU_NO_SPACE_LEFT = (size_t *)1;
+static UWU_ERR UWU_ERR_NO_SPACE_LEFT = (size_t *)1;
 // Adds a new value to the collection. This operation can fail if no space is
 // available for the collection.
 //
@@ -141,43 +141,55 @@ static UWU_ERR UWU_NO_SPACE_LEFT = (size_t *)1;
 //
 // Success: Stores the item in the collection.
 // Failure: Sets the err value to `UWU_NO_SPACE_LEFT`.
-void UWU_UserCollection_addUser(struct UWU_UserCollection *col,
-                                struct UWU_String val, UWU_ERR err) {
+void UWU_UserCollection_addUser(UWU_UserCollection *col, UWU_String val,
+                                UWU_ERR err) {
   int no_space_left = col->length >= col->capacity;
   if (no_space_left) {
-    err = UWU_NO_SPACE_LEFT;
+    err = UWU_ERR_NO_SPACE_LEFT;
     return;
   }
 
+  UWU_UserCollection self = *col;
   size_t idx = col->length;
-  struct UWU_String(*data)[] = col->data;
-  (*data)[idx] = val;
+  (*self.data)[idx] = val;
+  // struct UWU_String(*data)[col->capacity] = col->data;
+  // ((struct UWU_String *[])data)[idx] = val;
+  // (*col.data)[idx] = val;
   col->length += 1;
 }
 
 // Tries to remove a user by it's username. This operation can fail if no user
 // is found with the given username.
-void UWU_UserCollection_removeByUsername(struct UWU_UserCollection *col,
-                                         struct UWU_String *val, UWU_ERR err) {
+void UWU_UserCollection_removeByUsername(UWU_UserCollection *col,
+                                         UWU_String *val, UWU_ERR err) {
   size_t max = col->length;
   for (size_t i = 0; i < max; i++) {
-    struct UWU_String current = (*(col->data))[i];
+    UWU_String current = (*col->data)[i];
     if (UWU_String_equal(&current, val)) {
       // FIXME: Remove username...
     }
   }
 }
 
-static struct UWU_UserCollection active_users_collection;
+static UWU_UserCollection active_users_collection;
 
 // Initializes the server state |
-struct UWU_Arena initialize_server_state(UWU_ERR err) {
+UWU_Arena initialize_server_state(UWU_ERR err) {
   const size_t MAX_ACTIVE_USERS = 255;
-  struct UWU_Arena global_arena =
-      UWU_Arena_init(sizeof(struct UWU_String) * MAX_ACTIVE_USERS, err);
+  UWU_Arena global_arena =
+      UWU_Arena_init(sizeof(UWU_String) * MAX_ACTIVE_USERS, err);
+
+  if (err != NO_ERROR) {
+    return global_arena;
+  }
 
   active_users_collection =
       UWU_UserCollection_new(&global_arena, MAX_ACTIVE_USERS, err);
+
+  if (err != NO_ERROR) {
+    return global_arena;
+  }
+
   // TODO: Initialize other server state...
 
   return global_arena;
@@ -211,7 +223,15 @@ int main(int argc, char const *argv[]) {
   websocket_optimize4broadcasts(WEBSOCKET_OPTIMIZE_PUBSUB, 1);
 
   UWU_ERR err = NO_ERROR;
-  struct UWU_Arena global_arena = initialize_server_state(err);
+  UWU_Arena global_arena = initialize_server_state(err);
+
+  if (err != NO_ERROR) {
+    fprintf(stderr, "An error during the initialization of the server state!");
+
+    fio_cli_end();
+    fio_tls_destroy(tls);
+    return 1;
+  }
 
   /* listen for incoming connections */
   const char *port = fio_cli_get("-p");
@@ -311,7 +331,7 @@ static void on_http_upgrade(http_s *h, char *requested_protocol, size_t len) {
           c_nickname.data);
 
   UWU_ERR err = NO_ERROR;
-  struct UWU_String *uwu_nickname = UWU_String_copyFromFio(fio_nickname, err);
+  UWU_String *uwu_nickname = UWU_String_copyFromFio(fio_nickname, err);
 
   if (err != NO_ERROR) {
     fprintf(stderr, "ERROR: Can't copy username from Facil.io into local "
@@ -401,7 +421,7 @@ static void ws_on_open(ws_s *ws) {
   UWU_ERR err = NO_ERROR;
 
   // 1. Add the user as an active user.
-  const struct UWU_String *userName = websocket_udata_get(ws);
+  const UWU_String *userName = websocket_udata_get(ws);
   UWU_UserCollection_addUser(&active_users_collection, *userName, err);
 
   // TODO: Initialize user state...

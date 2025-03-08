@@ -46,6 +46,8 @@ const facilio_examples = [_][]const u8{
     "examples/http-hello.c",
 };
 
+const c_compile_flags = [_][]const u8{"-Weverything"};
+
 // Although this function looks imperative, note that its job is to
 // declaratively construct a build graph that will be executed by an external
 // runner.
@@ -127,7 +129,10 @@ pub fn build(b: *std.Build) !void {
     exe.linkLibC();
     exe.linkLibrary(facilio);
     // Finally we add the main.c file to our executable as a source file.
-    exe.addCSourceFile(.{ .file = .{ .cwd_relative = "src/server.c" } });
+    exe.addCSourceFile(.{
+        .file = .{ .cwd_relative = "src/server.c" },
+        .flags = &c_compile_flags,
+    });
     for (facilio_includes) |dep_path| {
         exe.addIncludePath(facilio_dep.path(dep_path));
     }
