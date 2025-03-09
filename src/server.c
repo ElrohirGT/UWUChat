@@ -78,7 +78,8 @@ two different browser windows.
 Constants
 ***************************************************************************** */
 
-// static UWU_String GROUP_CHAT_NAME = {.data = "~", .length = strlen("~")};
+// The separator used for separating usernames in the hashmap.
+// A username should not include this sequence of characters.
 static UWU_String SEPARATOR = {.data = "&/)", .length = strlen("&/)")};
 
 /* *****************************************************************************
@@ -160,7 +161,15 @@ static UWU_ChatHistory group_chat;
 void initialize_server_state(UWU_ERR err) {
   active_usernames = UWU_UserList_init();
 
-  group_chat = UWU_ChatHistory_init(MAX_MESSAGES_PER_CHAT * 3, err);
+  char *group_chat_name = malloc(sizeof(char));
+  if (group_chat_name == NULL) {
+    err = MALLOC_FAILED;
+    return;
+  }
+  *group_chat_name = '~';
+  UWU_String uwu_name = {.data = group_chat_name, .length = 1};
+
+  group_chat = UWU_ChatHistory_init(MAX_MESSAGES_PER_CHAT * 3, uwu_name, err);
   if (err != NO_ERROR) {
     return;
   }
@@ -174,8 +183,11 @@ void initialize_server_state(UWU_ERR err) {
 }
 
 void deinitialize_server_state() {
+  fprintf(stderr, "Cleaning User List...\n");
   UWU_UserList_deinit(&active_usernames);
+  fprintf(stderr, "Cleaning group Chat history...\n");
   UWU_ChatHistory_deinit(&group_chat);
+  fprintf(stderr, "Cleaning DM Chat histories...\n");
   hashmap_destroy(&chats);
 }
 
@@ -211,7 +223,8 @@ int main(int argc, char const *argv[]) {
   initialize_server_state(err);
 
   if (err != NO_ERROR) {
-    fprintf(stderr, "An error during the initialization of the server state!");
+    fprintf(stderr,
+            "An error during the initialization of the server state!\n");
 
     fio_cli_end();
     fio_tls_destroy(tls);
@@ -230,6 +243,7 @@ int main(int argc, char const *argv[]) {
                   .timeout = fio_cli_get_i("-keep-alive"), .tls = tls,
                   .ws_timeout = fio_cli_get_i("-ping")) == -1) {
     /* listen failed ?*/
+    deinitialize_server_state();
     perror(
         "ERROR: facil.io couldn't initialize HTTP service (already running?)");
     exit(1);
@@ -239,6 +253,8 @@ int main(int argc, char const *argv[]) {
   fio_start(.threads = fio_cli_get_i("-t"), .workers = fio_cli_get_i("-w"));
 
   // Cleaning up...
+  fprintf(stderr, "Shutting down server...\n");
+  deinitialize_server_state();
   fio_cli_end();
   fio_tls_destroy(tls);
   return 0;
@@ -421,12 +437,6 @@ static void ws_on_open(ws_s *ws) {
     UWU_PANIC("Failed to add username `%s` to the UserCollection!", c_str);
     return;
   }
-  // UWU_StringCollection_addUser(&active_usernames, *user_name, err);
-  // if (err != NO_ERROR) {
-  //   char *c_str = UWU_String_toCStr(user_name);
-  //   UWU_PANIC("Failed to add username `%s` to the UserCollection!", c_str);
-  //   return;
-  // }
 
   for (struct UWU_UserListNode *current = active_usernames.start;
        current != NULL; current = current->next) {
@@ -453,7 +463,7 @@ static void ws_on_open(ws_s *ws) {
     websocket_subscribe(ws, .channel = channel);
 
     UWU_ChatHistory *ht = malloc(sizeof(UWU_ChatHistory));
-    *ht = UWU_ChatHistory_init(MAX_MESSAGES_PER_CHAT, err);
+    *ht = UWU_ChatHistory_init(MAX_MESSAGES_PER_CHAT, combined, err);
     hashmap_put(&chats, combined.data, combined.length, ht);
   }
 

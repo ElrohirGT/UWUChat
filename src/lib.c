@@ -129,20 +129,6 @@ UWU_Arena UWU_Arena_init(size_t capacity, UWU_ERR err) {
   return arena;
 }
 
-// {
-// let arena = malloc()
-//
-// while (true) {
-//
-// let a = arena.alloc(adlfkjlasdf)
-// let b = arena.alloc(asdkfjalskdjf)
-//
-// arena.reset()
-// }
-//
-// free(arena)
-// }
-
 // Tries to allocate on the arena.
 //
 // - arena: The specific arena to use for allocation.
@@ -340,13 +326,6 @@ UWU_String UWU_String_copyFromFio(FIOBJ obj, UWU_ERR err) {
     data[i] = c_str.data[i];
   }
 
-  // UWU_String *str = malloc(sizeof(UWU_String));
-
-  // if (str == NULL) {
-  //   err = MALLOC_FAILED;
-  //   return NULL;
-  // }
-
   str.data = data;
   str.length = c_str.len;
 
@@ -472,6 +451,7 @@ struct UWU_UserListNode *UWU_UserListNode_copy(struct UWU_UserListNode *other,
   copy->data = data_copy;
   copy->previous = other->previous;
   copy->next = other->next;
+  copy->is_sentinel = other->is_sentinel;
 
   return copy;
 }
@@ -507,7 +487,11 @@ typedef struct {
 
 UWU_UserList UWU_UserList_init() {
   UWU_ERR err = NO_ERROR;
-  UWU_User def_user = {};
+  UWU_String sentinel_name = {
+      .data = "<sentinel>",
+      .length = strlen("<sentinel>"),
+  };
+  UWU_User def_user = {.username = sentinel_name, .status = DISCONNETED};
   struct UWU_UserListNode start_node = UWU_UserListNode_newWithValue(def_user);
   struct UWU_UserListNode *start_copy = UWU_UserListNode_copy(&start_node, err);
   start_copy->is_sentinel = TRUE;
@@ -526,20 +510,16 @@ UWU_UserList UWU_UserList_init() {
 
 // Destroys all pointers and frees all memory of all nodes.
 void UWU_UserList_deinit(UWU_UserList *list) {
-  struct UWU_UserListNode *current = list->start->next;
-  while (current != NULL) {
+  struct UWU_UserListNode *current = list->start;
 
-    if (current->is_sentinel) {
-      struct UWU_UserListNode *tmp = current;
-      current = current->next;
-      free(tmp);
-    } else {
-      UWU_UserListNode_deinit(current);
-      current = current->next;
-    }
+  while (current != NULL) {
+    struct UWU_UserListNode *tmp = current;
+    current = current->next;
+    UWU_UserListNode_deinit(tmp);
   }
 
   free(list->end);
+  free(list->start);
 }
 
 // Inserts a specified node to the start of the list.
@@ -642,6 +622,8 @@ typedef struct {
 typedef struct {
   // A pointer to an array of `ChatEntry`.
   UWU_ChatEntry *messages;
+  // The name of the channel that points to this history the server state
+  UWU_String channel_name;
   // The number of chat messages filling the array.
   size_t count;
   // How much memory is left in the array of `ChatEntry`.
@@ -651,7 +633,8 @@ typedef struct {
 } UWU_ChatHistory;
 
 // Creates a new ChatHistory with the specified capacity for messages.
-UWU_ChatHistory UWU_ChatHistory_init(size_t capacity, UWU_ERR err) {
+UWU_ChatHistory UWU_ChatHistory_init(size_t capacity, UWU_String channel_name,
+                                     UWU_ERR err) {
   UWU_ChatHistory ht = {};
 
   ht.messages = malloc(sizeof(UWU_ChatEntry[capacity]));
@@ -663,11 +646,15 @@ UWU_ChatHistory UWU_ChatHistory_init(size_t capacity, UWU_ERR err) {
   ht.capacity = capacity;
   ht.count = 0;
   ht.next_idx = 0;
+  ht.channel_name = channel_name;
 
   return ht;
 }
 
-void UWU_ChatHistory_deinit(UWU_ChatHistory *ht) { free(ht->messages); }
+void UWU_ChatHistory_deinit(UWU_ChatHistory *ht) {
+  free(ht->messages);
+  UWU_String_freeWithMalloc(&ht->channel_name);
+}
 
 // Adds a new entry to the ChatHistory.
 //
