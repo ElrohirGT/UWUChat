@@ -477,7 +477,7 @@ struct UWU_UserListNode *UWU_UserListNode_copy(struct UWU_UserListNode *other,
 }
 
 // Free all the resources associated with this node.
-void UWU_UserListNode_free(struct UWU_UserListNode *ref) {
+void UWU_UserListNode_deinit(struct UWU_UserListNode *ref) {
   UWU_User_free(&ref->data);
 
   // Reset pointers...
@@ -505,7 +505,7 @@ typedef struct {
   size_t length;
 } UWU_UserList;
 
-UWU_UserList UWU_UserList_new() {
+UWU_UserList UWU_UserList_init() {
   UWU_ERR err = NO_ERROR;
   UWU_User def_user = {};
   struct UWU_UserListNode start_node = UWU_UserListNode_newWithValue(def_user);
@@ -522,6 +522,24 @@ UWU_UserList UWU_UserList_new() {
 
   UWU_UserList def_list = {.start = start_copy, .end = end_copy, .length = 0};
   return def_list;
+}
+
+// Destroys all pointers and frees all memory of all nodes.
+void UWU_UserList_deinit(UWU_UserList *list) {
+  struct UWU_UserListNode *current = list->start->next;
+  while (current != NULL) {
+
+    if (current->is_sentinel) {
+      struct UWU_UserListNode *tmp = current;
+      current = current->next;
+      free(tmp);
+    } else {
+      UWU_UserListNode_deinit(current);
+      current = current->next;
+    }
+  }
+
+  free(list->end);
 }
 
 // Inserts a specified node to the start of the list.
@@ -594,7 +612,7 @@ void UWU_UserList_removeByUsernameIfExists(UWU_UserList *list,
       previous->next = current->next;
       next->previous = current->previous;
 
-      UWU_UserListNode_free(current);
+      UWU_UserListNode_deinit(current);
       free(current); // The node is always on the heap thanks to
                      // `UWU_UserListNode_copy`!
       list->length -= 1;
@@ -633,7 +651,7 @@ typedef struct {
 } UWU_ChatHistory;
 
 // Creates a new ChatHistory with the specified capacity for messages.
-UWU_ChatHistory UWU_ChatHistory_new(size_t capacity, UWU_ERR err) {
+UWU_ChatHistory UWU_ChatHistory_init(size_t capacity, UWU_ERR err) {
   UWU_ChatHistory ht = {};
 
   ht.messages = malloc(sizeof(UWU_ChatEntry[capacity]));
@@ -648,6 +666,8 @@ UWU_ChatHistory UWU_ChatHistory_new(size_t capacity, UWU_ERR err) {
 
   return ht;
 }
+
+void UWU_ChatHistory_deinit(UWU_ChatHistory *ht) { free(ht->messages); }
 
 // Adds a new entry to the ChatHistory.
 //

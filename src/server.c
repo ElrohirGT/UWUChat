@@ -78,7 +78,7 @@ two different browser windows.
 Constants
 ***************************************************************************** */
 
-static UWU_String GROUP_CHAT_NAME = {.data = "~", .length = strlen("~")};
+// static UWU_String GROUP_CHAT_NAME = {.data = "~", .length = strlen("~")};
 static UWU_String SEPARATOR = {.data = "&/)", .length = strlen("&/)")};
 
 /* *****************************************************************************
@@ -95,8 +95,17 @@ int remove_if_matches(void *context, struct hashmap_element_s *const e) {
   UWU_String tmp_after = UWU_String_combineWithOther(user_name, &SEPARATOR);
   UWU_String tmp_before = UWU_String_combineWithOther(&SEPARATOR, user_name);
 
-  if (UWU_String_startsWith(&hash_key, &tmp_after) ||
-      UWU_String_endsWith(&hash_key, &tmp_before)) {
+  bool starts_with_username = UWU_String_startsWith(&hash_key, &tmp_after);
+  bool ends_with_username = UWU_String_endsWith(&hash_key, &tmp_before);
+
+  UWU_String_freeWithMalloc(&tmp_after);
+  UWU_String_freeWithMalloc(&tmp_before);
+
+  if (starts_with_username || ends_with_username) {
+    UWU_ChatHistory *data = e->data;
+
+    UWU_ChatHistory_deinit(data);
+    free(data);
     return -1;
   }
 
@@ -149,9 +158,9 @@ static UWU_ChatHistory group_chat;
 
 // Initializes the server state...
 void initialize_server_state(UWU_ERR err) {
-  active_usernames = UWU_UserList_new();
+  active_usernames = UWU_UserList_init();
 
-  group_chat = UWU_ChatHistory_new(MAX_MESSAGES_PER_CHAT * 3, err);
+  group_chat = UWU_ChatHistory_init(MAX_MESSAGES_PER_CHAT * 3, err);
   if (err != NO_ERROR) {
     return;
   }
@@ -162,6 +171,12 @@ void initialize_server_state(UWU_ERR err) {
   }
 
   // TODO: Initialize other server state...
+}
+
+void deinitialize_server_state() {
+  UWU_UserList_deinit(&active_usernames);
+  UWU_ChatHistory_deinit(&group_chat);
+  hashmap_destroy(&chats);
 }
 
 /* *****************************************************************************
@@ -391,14 +406,13 @@ static void ws_on_open(ws_s *ws) {
 
   // 1. Add the user as an active user.
   UWU_String *user_name = websocket_udata_get(ws);
-  UWU_String copy_username = UWU_String_copy(user_name, err);
   if (err != NO_ERROR) {
     char *c_str = UWU_String_toCStr(user_name);
     UWU_PANIC("Failed to add username `%s` to the UserCollection!", c_str);
     return;
   }
 
-  UWU_User user = {.username = copy_username, .status = ACTIVE};
+  UWU_User user = {.username = *user_name, .status = ACTIVE};
 
   struct UWU_UserListNode node = UWU_UserListNode_newWithValue(user);
   UWU_UserList_insertEnd(&active_usernames, &node, err);
@@ -439,7 +453,7 @@ static void ws_on_open(ws_s *ws) {
     websocket_subscribe(ws, .channel = channel);
 
     UWU_ChatHistory *ht = malloc(sizeof(UWU_ChatHistory));
-    *ht = UWU_ChatHistory_new(MAX_MESSAGES_PER_CHAT, err);
+    *ht = UWU_ChatHistory_init(MAX_MESSAGES_PER_CHAT, err);
     hashmap_put(&chats, combined.data, combined.length, ht);
   }
 
@@ -468,8 +482,8 @@ static void ws_on_close(intptr_t uuid, void *udata) {
 
   UWU_UserList_removeByUsernameIfExists(&active_usernames, user_name);
 
-  // The UWU_String.data has already been freed by the collection.
-  // Now we need to free the UWU_String itself!
+  // Now we need to free the UWU_String!
+  UWU_String_freeWithMalloc(user_name);
   free(user_name);
 
   /* Let everyone know we left the chat */
