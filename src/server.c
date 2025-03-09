@@ -53,12 +53,14 @@ Mitchel and Johana, which means messages will be delivered twice unless using
 two different browser windows.
 */
 
+#include "hashmap.h"
 #include "lib.c"
 
 /* Include the core library */
 #include "fiobj_hash.h"
 #include "fiobj_str.h"
 #include "fiobject.h"
+#include "websockets.h"
 #include <fio.h>
 
 /* Include the TLS, CLI, FIOBJ and HTTP / WebSockets extensions */
@@ -66,9 +68,40 @@ two different browser windows.
 #include <fio_tls.h>
 #include <http.h>
 #include <redis_engine.h>
+#include <stddef.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
+
+/* *****************************************************************************
+Constants
+***************************************************************************** */
+
+static UWU_String GROUP_CHAT_NAME = {.data = "~", .length = strlen("~")};
+static UWU_String SEPARATOR = {.data = "&/)", .length = strlen("&/)")};
+
+/* *****************************************************************************
+Utilities functions
+***************************************************************************** */
+
+int remove_if_matches(void *context, struct hashmap_element_s *const e) {
+  UWU_String *user_name = context;
+  UWU_String hash_key = {
+      .data = (char *)e->key,
+      .length = e->key_len,
+  };
+
+  UWU_String tmp_after = UWU_String_combineWithOther(user_name, &SEPARATOR);
+  UWU_String tmp_before = UWU_String_combineWithOther(&SEPARATOR, user_name);
+
+  if (UWU_String_startsWith(&hash_key, &tmp_after) ||
+      UWU_String_endsWith(&hash_key, &tmp_before)) {
+    return -1;
+  }
+
+  return 0;
+}
 
 /* *****************************************************************************
 Server State
@@ -76,13 +109,13 @@ Server State
 
 // Collection that saves all the chat histories from all usernames.
 typedef struct {
-  UWU_History *data;
+  UWU_ChatHistory *data;
   uint8_t length;
   uint8_t capacity;
 } UWU_ChatHistoryCollection;
 
 // Global group chat
-static fio_str_info_s GROUP_CHAT_CHANNEL = {.data = "~", .len = 4};
+static fio_str_info_s GROUP_CHAT_CHANNEL = {.data = "~", .len = strlen("~")};
 
 // Si tenemos "n" usuarios conectados entonces tendremos una cantidad de chats
 // igual a:
@@ -99,100 +132,36 @@ static fio_str_info_s GROUP_CHAT_CHANNEL = {.data = "~", .len = 4};
 // alfabéticamente.
 // * Los valores serán los historiales de mensajes.
 
-// Saves a collection of usernames.
-typedef struct {
-  size_t length;
-  size_t capacity;
-  UWU_String (*data)[];
-  // UWU_String *data;
-} UWU_UserCollection;
+// The max quantity of users that can be active..
+// const size_t MAX_ACTIVE_USERS = 255;
 
-// Creates a new collection using the specified arena to allocate.
-//
-// * alloc: The arena allocator to use.
-// * capacity: The amount of usernames this collection could hold.
-// * err: The error param, refer to the start of lib.c for an explanation.
-UWU_UserCollection UWU_UserCollection_new(UWU_Arena *alloc, size_t capacity,
-                                          size_t *err) {
-  UWU_UserCollection col = {};
-  size_t byte_capacity = sizeof(UWU_String[capacity]);
-  col.data = UWU_Arena_alloc(alloc, byte_capacity, err);
+// The max quantity of messages a chat history can hold...
+const size_t MAX_MESSAGES_PER_CHAT = 100;
 
-  // This means an error occurred!
-  // Most likely an allocation error since only UWU_Arena_alloc has been called
-  // before checking...
-  if (err != NULL) {
-    return col;
-  }
+// Saves all the active usernames...
+static UWU_UserList active_usernames;
+// Saves all the chat active chat histories...
+// Key: The combination of both usernames as a UWU_String.
+// Value: An UWU_History item.
+static struct hashmap_s chats;
+// Saves all the chat history messages from the Group chat
+static UWU_ChatHistory group_chat;
 
-  col.length = 0;
-  col.capacity = capacity;
+// Initializes the server state...
+void initialize_server_state(UWU_ERR err) {
+  active_usernames = UWU_UserList_new();
 
-  return col;
-}
-
-static UWU_ERR UWU_ERR_NO_SPACE_LEFT = (size_t *)1;
-// Adds a new value to the collection. This operation can fail if no space is
-// available for the collection.
-//
-// * col: The collection to add a user to.
-// * val: The username to add.
-// * err: The err parameter, refer back to the start of lib.c for an explanation
-//
-// Success: Stores the item in the collection.
-// Failure: Sets the err value to `UWU_NO_SPACE_LEFT`.
-void UWU_UserCollection_addUser(UWU_UserCollection *col, UWU_String val,
-                                UWU_ERR err) {
-  int no_space_left = col->length >= col->capacity;
-  if (no_space_left) {
-    err = UWU_ERR_NO_SPACE_LEFT;
+  group_chat = UWU_ChatHistory_new(MAX_MESSAGES_PER_CHAT * 3, err);
+  if (err != NO_ERROR) {
     return;
   }
 
-  UWU_UserCollection self = *col;
-  size_t idx = col->length;
-  (*self.data)[idx] = val;
-  // struct UWU_String(*data)[col->capacity] = col->data;
-  // ((struct UWU_String *[])data)[idx] = val;
-  // (*col.data)[idx] = val;
-  col->length += 1;
-}
-
-// Tries to remove a user by it's username. This operation can fail if no user
-// is found with the given username.
-void UWU_UserCollection_removeByUsername(UWU_UserCollection *col,
-                                         UWU_String *val, UWU_ERR err) {
-  size_t max = col->length;
-  for (size_t i = 0; i < max; i++) {
-    UWU_String current = (*col->data)[i];
-    if (UWU_String_equal(&current, val)) {
-      // FIXME: Remove username...
-    }
-  }
-}
-
-static UWU_UserCollection active_users_collection;
-
-// Initializes the server state |
-UWU_Arena initialize_server_state(UWU_ERR err) {
-  const size_t MAX_ACTIVE_USERS = 255;
-  UWU_Arena global_arena =
-      UWU_Arena_init(sizeof(UWU_String) * MAX_ACTIVE_USERS, err);
-
-  if (err != NO_ERROR) {
-    return global_arena;
-  }
-
-  active_users_collection =
-      UWU_UserCollection_new(&global_arena, MAX_ACTIVE_USERS, err);
-
-  if (err != NO_ERROR) {
-    return global_arena;
+  if (0 != hashmap_create(8, &chats)) {
+    err = HASHMAP_INITIALIZATION_ERROR;
+    return;
   }
 
   // TODO: Initialize other server state...
-
-  return global_arena;
 }
 
 /* *****************************************************************************
@@ -223,7 +192,8 @@ int main(int argc, char const *argv[]) {
   websocket_optimize4broadcasts(WEBSOCKET_OPTIMIZE_PUBSUB, 1);
 
   UWU_ERR err = NO_ERROR;
-  UWU_Arena global_arena = initialize_server_state(err);
+
+  initialize_server_state(err);
 
   if (err != NO_ERROR) {
     fprintf(stderr, "An error during the initialization of the server state!");
@@ -245,7 +215,6 @@ int main(int argc, char const *argv[]) {
                   .timeout = fio_cli_get_i("-keep-alive"), .tls = tls,
                   .ws_timeout = fio_cli_get_i("-ping")) == -1) {
     /* listen failed ?*/
-    UWU_Arena_deinit(&global_arena);
     perror(
         "ERROR: facil.io couldn't initialize HTTP service (already running?)");
     exit(1);
@@ -255,8 +224,6 @@ int main(int argc, char const *argv[]) {
   fio_start(.threads = fio_cli_get_i("-t"), .workers = fio_cli_get_i("-w"));
 
   // Cleaning up...
-  UWU_Arena_deinit(&global_arena);
-
   fio_cli_end();
   fio_tls_destroy(tls);
   return 0;
@@ -331,7 +298,8 @@ static void on_http_upgrade(http_s *h, char *requested_protocol, size_t len) {
           c_nickname.data);
 
   UWU_ERR err = NO_ERROR;
-  UWU_String *uwu_nickname = UWU_String_copyFromFio(fio_nickname, err);
+  UWU_String *uwu_nickname = malloc(sizeof(UWU_String));
+  *uwu_nickname = UWU_String_copyFromFio(fio_nickname, err);
 
   if (err != NO_ERROR) {
     fprintf(stderr, "ERROR: Can't copy username from Facil.io into local "
@@ -410,44 +378,107 @@ static void ws_on_message(ws_s *ws, fio_str_info_s msg, uint8_t is_text) {
 }
 
 // When a new user connects to the server we need to do a lot of stuff:
-// 1. Add the user as an active user.
-// 2. Initialize all it's state.
-// 3. Notify other clients that this user has recently connected.
+// - Add the user as an active user.
+// - Initialize all it's state.
+// - Subscribe to the group chat and other chats.
+// - Notify other clients that this user has recently connected.
 static void ws_on_open(ws_s *ws) {
-  websocket_subscribe(ws, .channel = GROUP_CHAT_CHANNEL);
-  websocket_write(
-      ws, (fio_str_info_s){.data = "Welcome to the chat-room.", .len = 25}, 1);
+  // websocket_write(
+  //     ws, (fio_str_info_s){.data = "Welcome to the chat-room.", .len = 25},
+  //     1);
 
   UWU_ERR err = NO_ERROR;
 
   // 1. Add the user as an active user.
-  const UWU_String *userName = websocket_udata_get(ws);
-  UWU_UserCollection_addUser(&active_users_collection, *userName, err);
+  UWU_String *user_name = websocket_udata_get(ws);
+  UWU_String copy_username = UWU_String_copy(user_name, err);
+  if (err != NO_ERROR) {
+    char *c_str = UWU_String_toCStr(user_name);
+    UWU_PANIC("Failed to add username `%s` to the UserCollection!", c_str);
+    return;
+  }
 
-  // TODO: Initialize user state...
+  UWU_User user = {.username = copy_username, .status = ACTIVE};
+
+  struct UWU_UserListNode node = UWU_UserListNode_newWithValue(user);
+  UWU_UserList_insertEnd(&active_usernames, &node, err);
+  if (err != NO_ERROR) {
+    char *c_str = UWU_String_toCStr(user_name);
+    UWU_PANIC("Failed to add username `%s` to the UserCollection!", c_str);
+    return;
+  }
+  // UWU_StringCollection_addUser(&active_usernames, *user_name, err);
+  // if (err != NO_ERROR) {
+  //   char *c_str = UWU_String_toCStr(user_name);
+  //   UWU_PANIC("Failed to add username `%s` to the UserCollection!", c_str);
+  //   return;
+  // }
+
+  for (struct UWU_UserListNode *current = active_usernames.start;
+       current != NULL; current = current->next) {
+
+    if (current->is_sentinel) {
+      continue;
+    }
+
+    UWU_String current_username = current->data.username;
+    UWU_String *first = &current_username;
+    UWU_String *other = user_name;
+
+    if (!UWU_String_firstGoesFirst(first, other)) {
+      first = user_name;
+      other = &current_username;
+    }
+
+    UWU_String tmp = UWU_String_combineWithOther(first, &SEPARATOR);
+    UWU_String combined = UWU_String_combineWithOther(&tmp, other);
+    UWU_String_freeWithMalloc(&tmp);
+
+    // Subscribe to all DM channels...
+    fio_str_info_s channel = {.data = combined.data, .len = combined.length};
+    websocket_subscribe(ws, .channel = channel);
+
+    UWU_ChatHistory *ht = malloc(sizeof(UWU_ChatHistory));
+    *ht = UWU_ChatHistory_new(MAX_MESSAGES_PER_CHAT, err);
+    hashmap_put(&chats, combined.data, combined.length, ht);
+  }
+
+  // Subscribe to group channel
+  websocket_subscribe(ws, .channel = GROUP_CHAT_CHANNEL);
 
   // FIXME: Change message!
   // 3. Notify other clients that this user has recently connected...
-  FIOBJ tmp = fiobj_str_new(userName->data, userName->length);
+  FIOBJ tmp = fiobj_str_new(user_name->data, user_name->length);
   fiobj_str_write(tmp, " joind the chat.", 16);
   fio_publish(.channel = GROUP_CHAT_CHANNEL, .message = fiobj_obj2cstr(tmp));
   fiobj_free(tmp);
 }
 
 static void ws_on_shutdown(ws_s *ws) {
+
   websocket_write(
       ws, (fio_str_info_s){.data = "Server shutting down, goodbye.", .len = 30},
       1);
 }
 
 static void ws_on_close(intptr_t uuid, void *udata) {
+  UWU_String *user_name = udata;
+
+  hashmap_iterate_pairs(&chats, remove_if_matches, user_name);
+
+  UWU_UserList_removeByUsernameIfExists(&active_usernames, user_name);
+
+  // The UWU_String.data has already been freed by the collection.
+  // Now we need to free the UWU_String itself!
+  free(user_name);
+
   /* Let everyone know we left the chat */
-  fiobj_str_write((FIOBJ)udata, " left the chat.", 15);
-  fio_publish(.channel = GROUP_CHAT_CHANNEL,
-              .message = fiobj_obj2cstr((FIOBJ)udata));
-  /* free the nickname */
-  fiobj_free((FIOBJ)udata);
-  (void)uuid; // we don't use the ID
+  // fiobj_str_write((FIOBJ)udata, " left the chat.", 15);
+  // fio_publish(.channel = GROUP_CHAT_CHANNEL,
+  //             .message = fiobj_obj2cstr((FIOBJ)udata));
+  // /* free the nickname */
+  // fiobj_free((FIOBJ)udata);
+  // (void)uuid; // we don't use the ID
 }
 
 /* *****************************************************************************

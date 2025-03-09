@@ -4,6 +4,7 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
 /* *****************************************************************************
 Welcum
@@ -23,8 +24,12 @@ Please, **ALWAYS CHECK THE ERR PARAMETER** after calling a function that
 requires it! It's like programming in Go but for C...
 */
 typedef size_t *UWU_ERR;
-// Represents the absence of an error
-static const UWU_ERR NO_ERROR = NULL;
+static const UWU_ERR NO_ERROR = 0;
+static const UWU_ERR NOT_FOUND = (size_t *)1;
+static const UWU_ERR MALLOC_FAILED = (size_t *)2;
+static const UWU_ERR ARENA_ALLOC_FAILED = (size_t *)3;
+static const UWU_ERR NO_SPACE_LEFT = (size_t *)4;
+static const UWU_ERR HASHMAP_INITIALIZATION_ERROR = (size_t *)5;
 
 typedef int bool;
 static const bool TRUE = 1;
@@ -38,7 +43,8 @@ static const bool FALSE = 0;
 // Common examples of appropriate places to panic include:
 // * Accessing items out of bounds.
 // * Trying to close a connection that has already been closed.
-// * Trying to free memory already freed.
+// * If your function can fail but it doesn't use the `UWU_ERR` API then it
+// should PANIC!
 void UWU_PANIC(const char *format, ...) {
   va_list args;
 
@@ -71,7 +77,7 @@ typedef enum {
   GET_MESSAGES,
 } UWU_ServerMessages;
 
-// Represents all the "type codes" of messages the client receive from the
+// Represents all the "type codes" of messages the client receives from the
 // server.
 typedef enum {
   ERROR = 50,
@@ -107,15 +113,13 @@ typedef struct {
   uint8_t *data;
 } UWU_Arena;
 
-static UWU_ERR UWU_ERR_MALLOC_ERROR = (UWU_ERR)1;
-
 // Initializes a new arena with the specified capacity!
 UWU_Arena UWU_Arena_init(size_t capacity, UWU_ERR err) {
   UWU_Arena arena = {};
   arena.data = malloc(sizeof(uint8_t) * capacity);
 
   if (arena.data == NULL) {
-    err = UWU_ERR_MALLOC_ERROR;
+    err = MALLOC_FAILED;
     return arena;
   }
 
@@ -139,7 +143,6 @@ UWU_Arena UWU_Arena_init(size_t capacity, UWU_ERR err) {
 // free(arena)
 // }
 
-static UWU_ERR UWU_ERR_ARENA_FAILED_ALLOCATION = (UWU_ERR)1;
 // Tries to allocate on the arena.
 //
 // - arena: The specific arena to use for allocation.
@@ -151,7 +154,7 @@ static UWU_ERR UWU_ERR_ARENA_FAILED_ALLOCATION = (UWU_ERR)1;
 void *UWU_Arena_alloc(UWU_Arena *arena, size_t size, size_t *err) {
   bool has_space = arena->size + size <= arena->capacity;
   if (!has_space) {
-    err = UWU_ERR_ARENA_FAILED_ALLOCATION;
+    err = ARENA_ALLOC_FAILED;
     return NULL;
   } else {
     void *mem_start = &arena->data[arena->size];
@@ -176,10 +179,6 @@ void UWU_Arena_deinit(UWU_Arena *arena) {
 Strings
 ***************************************************************************** */
 
-// SoyUnaCadena\0
-// Soy
-// UnaCadeasdlfkjliqjwelkjasdf\0
-
 // Represents a string "slice"
 //
 // Only the creator of the original slice needs to free this memory!
@@ -192,12 +191,125 @@ typedef struct {
   size_t length;
 } UWU_String;
 
-// Converts from a `UWU_String` to a null terminated string.
-char *UWU_String_toCstr(UWU_String *str, UWU_ERR err) {
+bool UWU_String_startsWith(UWU_String *str, UWU_String *prefix) {
+  if (str->length < prefix->length) {
+    return FALSE;
+  }
+
+  if (0 == memcmp(str->data, prefix->data, prefix->length)) {
+    return TRUE;
+  }
+
+  return FALSE;
+}
+
+bool UWU_String_endsWith(UWU_String *str, UWU_String *postfix) {
+  if (str->length < postfix->length) {
+    return FALSE;
+  }
+
+  size_t start_idx = str->length - postfix->length;
+  if (0 == memcmp(&str->data[start_idx], postfix->data, postfix->length)) {
+    return TRUE;
+  }
+
+  return FALSE;
+}
+
+// Returns `TRUE` if `first` goes first alphabetically speaking.
+// False otherwise.
+bool UWU_String_firstGoesFirst(UWU_String *first, UWU_String *other) {
+  size_t min_length = first->length;
+  if (other->length < min_length) {
+    min_length = other->length;
+  }
+
+  for (size_t i = 0; i < min_length; i++) {
+    char char_first = first->data[i];
+    char char_other = other->data[i];
+    if (char_first == char_other) {
+      continue;
+    }
+
+    if (char_first < char_other) {
+      return TRUE;
+    } else {
+      return FALSE;
+    }
+  }
+
+  return FALSE;
+}
+
+// Attempts to combine two strings.
+//
+// The caller owns the resulting string.
+UWU_String UWU_String_combineWithOther(UWU_String *first, UWU_String *second) {
+  UWU_String str = {.length = first->length + second->length};
+  str.data = malloc(str.length);
+
+  if (str.data == NULL) {
+    UWU_PANIC("Malloc failed when trying to combine two strings!");
+    str.length = 0;
+    return str;
+  }
+
+  memcpy(str.data, first->data, first->length);
+  memcpy(&str.data[first->length], second->data, second->length);
+
+  return str;
+}
+
+// Attempts to combine two strings.
+//
+// The caller owns the resulting string.
+UWU_String UWU_String_tryCombineWithOther(UWU_String *first, UWU_String *second,
+                                          UWU_ERR err) {
+  UWU_String str = {.length = first->length + second->length};
+  str.data = malloc(str.length);
+
+  if (str.data == NULL) {
+    err = MALLOC_FAILED;
+    str.length = 0;
+    return str;
+  }
+
+  memcpy(str.data, first->data, first->length);
+  memcpy(&str.data[first->length], second->data, second->length);
+
+  return str;
+}
+
+// Frees the specified `UWU_String` that was originally allocated by a `malloc`
+// call. This function ONLY FREES THE `data` field inside `UWU_String`.
+void UWU_String_freeWithMalloc(UWU_String *str) { free(str->data); }
+
+// Attempts to converts from a `UWU_String` to a null terminated string.
+char *UWU_String_tryToCStr(UWU_String *str, UWU_ERR err) {
   char *c_str = malloc(str->length + 1);
 
   if (c_str == NULL) {
-    err = UWU_ERR_MALLOC_ERROR;
+    err = MALLOC_FAILED;
+    return c_str;
+  }
+
+  for (size_t i = 0; i < str->length + 1; i++) {
+    c_str[i] = str->data[i];
+  }
+  c_str[str->length] = 0;
+
+  return c_str;
+}
+
+// Converts from `UWU_String` into a null-terminated string (C string).
+//
+// If malloc fails then panics.
+char *UWU_String_toCStr(UWU_String *str) {
+  char *c_str = malloc(str->length + 1);
+
+  if (c_str == NULL) {
+    UWU_PANIC("Can't convert UWU_String into C_str! (len: %d, data: %s)",
+              str->length, str->data);
     return c_str;
   }
 
@@ -214,10 +326,12 @@ char *UWU_String_toCstr(UWU_String *str, UWU_ERR err) {
 // `obj` must be a `FIOBJ_T_STRING`, if not this function panics!
 //
 // To free this data please see `UWU_String_free`.
-UWU_String *UWU_String_copyFromFio(FIOBJ obj, UWU_ERR err) {
+UWU_String UWU_String_copyFromFio(FIOBJ obj, UWU_ERR err) {
+  UWU_String str = {};
+
   if (!FIOBJ_TYPE_IS(obj, FIOBJ_T_STRING)) {
     UWU_PANIC("Trying to copy from a Fio object that is not a string!");
-    return NULL;
+    return str;
   }
 
   fio_str_info_s c_str = fiobj_obj2cstr(obj);
@@ -226,25 +340,32 @@ UWU_String *UWU_String_copyFromFio(FIOBJ obj, UWU_ERR err) {
     data[i] = c_str.data[i];
   }
 
-  UWU_String *str = malloc(sizeof(UWU_String));
+  // UWU_String *str = malloc(sizeof(UWU_String));
 
-  if (str == NULL) {
-    err = UWU_ERR_MALLOC_ERROR;
-    return NULL;
-  }
+  // if (str == NULL) {
+  //   err = MALLOC_FAILED;
+  //   return NULL;
+  // }
 
-  str->data = data;
-  str->length = c_str.len;
+  str.data = data;
+  str.length = c_str.len;
 
   return str;
 }
 
-// Creates a new `UWU_String`.
-//
-// This method should only be used if you know that the returned `UWU_String`
-// will live for as long as `char*` data will.
-UWU_String UWU_String_new(char *data, size_t length) {
-  UWU_String str = {.data = data, .length = length};
+// Copies `src` into a new `UWU_String`.
+UWU_String UWU_String_copy(UWU_String *src, UWU_ERR err) {
+  UWU_String str = {};
+  str.data = malloc(src->length);
+
+  if (src->data == NULL) {
+    err = MALLOC_FAILED;
+    return str;
+  }
+
+  memcpy(str.data, src->data, src->length);
+  str.length = src->length;
+
   return str;
 }
 
@@ -253,14 +374,7 @@ uint8_t UWU_String_getChar(UWU_String *str, size_t idx) {
     return str->data[idx];
   }
 
-  UWU_ERR err = NO_ERROR;
-  char *c_str = UWU_String_toCstr(str, err);
-
-  if (err != NO_ERROR) {
-    UWU_PANIC("Can't convert UWU_String into C_str! (len: %d, data: %s)",
-              str->length, str->data);
-    return 0;
-  }
+  char *c_str = UWU_String_toCStr(str);
 
   UWU_PANIC("Out of bound access on String `%s` with Idx `%d`", c_str, idx);
   free(c_str);
@@ -283,6 +397,212 @@ bool UWU_String_equal(UWU_String *a, UWU_String *b) {
   return TRUE;
 }
 
+/* *****************************************************************************
+Server Users
+***************************************************************************** */
+
+typedef struct {
+  UWU_String username;
+  UWU_ConnStatus status;
+} UWU_User;
+
+UWU_User UWU_User_copyFrom(UWU_User *src, UWU_ERR err) {
+  UWU_User copy = {};
+
+  UWU_String user_name_copy = UWU_String_copy(&src->username, err);
+  if (err != NO_ERROR) {
+    err = MALLOC_FAILED;
+    return copy;
+  }
+
+  copy.username = user_name_copy;
+  copy.status = src->status;
+
+  return copy;
+}
+
+// Frees all resources associated with this user.
+//
+// This does not include the user itself!
+void UWU_User_free(UWU_User *ref) { UWU_String_freeWithMalloc(&ref->username); }
+
+// Represents a node inside the linked list.
+struct UWU_UserListNode {
+  // The linked list will always hold two nodes at the extremes.
+  // This nodes are the sentinels nodes, all other nodes should NOT BE sentinels
+  // nodes.
+  bool is_sentinel;
+  // The data the node is holding.
+  UWU_User data;
+  // The previous node in the list.
+  struct UWU_UserListNode *previous;
+  // The next node in the list.
+  struct UWU_UserListNode *next;
+};
+
+// Creates a new `UWU_UserListNode` with `data`.
+//
+// Both `next` and `previous` pointers are set to `NULL`.
+struct UWU_UserListNode UWU_UserListNode_newWithValue(UWU_User data) {
+  struct UWU_UserListNode node = {
+      .data = data,
+      .previous = NULL,
+      .next = NULL,
+      .is_sentinel = FALSE,
+  };
+
+  return node;
+}
+
+// Creates a copy from `other` and allocates it on the heap.
+struct UWU_UserListNode *UWU_UserListNode_copy(struct UWU_UserListNode *other,
+                                               UWU_ERR err) {
+  struct UWU_UserListNode *copy = malloc(sizeof(struct UWU_UserListNode));
+  if (copy == NULL) {
+    err = MALLOC_FAILED;
+    return NULL;
+  }
+
+  UWU_User data_copy = UWU_User_copyFrom(&other->data, err);
+  if (err != NO_ERROR) {
+    err = MALLOC_FAILED;
+    return NULL;
+  }
+
+  copy->data = data_copy;
+  copy->previous = other->previous;
+  copy->next = other->next;
+
+  return copy;
+}
+
+// Free all the resources associated with this node.
+void UWU_UserListNode_free(struct UWU_UserListNode *ref) {
+  UWU_User_free(&ref->data);
+
+  // Reset pointers...
+  ref->next = NULL;
+  ref->previous = NULL;
+}
+
+// Saves a list of users, the implementation is a linked list.
+// Appending items to the start and end are O(1) operations.
+// Since it's a collection, you can remove and add new users at any time.
+//
+// The list OWNS THE VALUES, so every addition is a copy, and every removal is a
+// free!
+typedef struct {
+  // A pointer to the start of the list
+  // By default is NULL.
+  struct UWU_UserListNode *start;
+  // A pointer to the end of the list
+  // By default is NULL.
+  struct UWU_UserListNode *end;
+
+  // The length of this list!
+  // This value will be valid as long as items are only added using the methods
+  // from the `UWU_UserList` API
+  size_t length;
+} UWU_UserList;
+
+UWU_UserList UWU_UserList_new() {
+  UWU_ERR err = NO_ERROR;
+  UWU_User def_user = {};
+  struct UWU_UserListNode start_node = UWU_UserListNode_newWithValue(def_user);
+  struct UWU_UserListNode *start_copy = UWU_UserListNode_copy(&start_node, err);
+  start_copy->is_sentinel = TRUE;
+
+  struct UWU_UserListNode end_node = UWU_UserListNode_newWithValue(def_user);
+  struct UWU_UserListNode *end_copy = UWU_UserListNode_copy(&end_node, err);
+  end_copy->is_sentinel = TRUE;
+
+  // Setup references...
+  start_copy->next = end_copy;
+  end_copy->previous = start_copy;
+
+  UWU_UserList def_list = {.start = start_copy, .end = end_copy, .length = 0};
+  return def_list;
+}
+
+// Inserts a specified node to the start of the list.
+// Remember, the list owns the values so this will create a copy of `*node` and
+// therefore it can fail!
+void UWU_UserList_insertStart(UWU_UserList *list, struct UWU_UserListNode *node,
+                              UWU_ERR err) {
+  struct UWU_UserListNode *copy = UWU_UserListNode_copy(node, err);
+  if (err != NO_ERROR) {
+    return;
+  }
+
+  struct UWU_UserListNode *second_node = list->start->next;
+
+  // Update already existing nodes...
+  second_node->previous = copy;
+  list->start->next = copy;
+
+  // Update copy node...
+  copy->previous = list->start;
+  copy->next = second_node;
+
+  list->length += 1;
+}
+
+// Inserts a specified node to the end of the list.
+// Remember, the list owns the values so this will create a copy of `*node` and
+// therefore it can fail!
+void UWU_UserList_insertEnd(UWU_UserList *list, struct UWU_UserListNode *node,
+                            UWU_ERR err) {
+
+  struct UWU_UserListNode *copy = UWU_UserListNode_copy(node, err);
+  if (err != NO_ERROR) {
+    return;
+  }
+
+  struct UWU_UserListNode *ante_node = list->end->previous;
+
+  // Update already existing nodes...
+  ante_node->next = copy;
+  list->end->previous = copy;
+
+  // Update copy node...
+  copy->previous = ante_node;
+  copy->next = list->end;
+
+  list->length += 1;
+}
+
+// Tries to remove a user by it's username, if the username is not found then it
+// simply does nothing.
+//
+// REMEMBER!! This frees the associated memory of the removed node.
+void UWU_UserList_removeByUsernameIfExists(UWU_UserList *list,
+                                           UWU_String *username) {
+
+  for (struct UWU_UserListNode *current = list->start; current != NULL;
+       current = current->next) {
+    if (current->is_sentinel) {
+      continue;
+    }
+
+    UWU_String current_username = current->data.username;
+
+    if (UWU_String_equal(username, &current_username)) {
+      struct UWU_UserListNode *previous = current->previous;
+      struct UWU_UserListNode *next = (current->next);
+
+      // Update references from list...
+      previous->next = current->next;
+      next->previous = current->previous;
+
+      UWU_UserListNode_free(current);
+      free(current); // The node is always on the heap thanks to
+                     // `UWU_UserListNode_copy`!
+      list->length -= 1;
+      current = previous;
+    }
+  }
+}
+
 // Represents a message on a given chat history.
 //
 // The ChatEntry should own it's memory! So it should receive a copy of
@@ -295,11 +615,86 @@ typedef struct {
 } UWU_ChatEntry;
 
 // Represents a message history of a certain chat
+//
+// Messages are stored on the `*messages` buffer. If the buffer is full the
+// oldest data is overridden.
+//
+// To iterate the data in order please obtain an iterator using:
+// `UWU_ChatHistory_iter()`
 typedef struct {
   // A pointer to an array of `ChatEntry`.
   UWU_ChatEntry *messages;
   // The number of chat messages filling the array.
-  uint32_t count;
+  size_t count;
   // How much memory is left in the array of `ChatEntry`.
-  uint32_t capacity;
-} UWU_History;
+  size_t capacity;
+  // The idx of the next message to insert in the array.
+  size_t next_idx;
+} UWU_ChatHistory;
+
+// Creates a new ChatHistory with the specified capacity for messages.
+UWU_ChatHistory UWU_ChatHistory_new(size_t capacity, UWU_ERR err) {
+  UWU_ChatHistory ht = {};
+
+  ht.messages = malloc(sizeof(UWU_ChatEntry[capacity]));
+  if (ht.messages == NULL) {
+    err = MALLOC_FAILED;
+    return ht;
+  }
+
+  ht.capacity = capacity;
+  ht.count = 0;
+  ht.next_idx = 0;
+
+  return ht;
+}
+
+// Adds a new entry to the ChatHistory.
+//
+// If the ChatHistory is already full then it wraps around and adds it to the
+// back.
+void UWU_ChatHistory_addMessage(UWU_ChatHistory *hist, UWU_ChatEntry entry) {
+
+  size_t next_idx = hist->next_idx % hist->capacity;
+  hist->messages[next_idx] = entry;
+
+  hist->count += 1;
+  hist->next_idx += 1;
+}
+
+// Gives limits for iterating over a `UWU_ChatHistory` in insertion order.
+// `start` and `end` ARE NOT indexes! Make sure to apply the % operator because
+// they can grow far beyond what the collection could hold!
+typedef struct {
+  size_t start;
+  size_t end;
+} UWU_ChatHistory_Iterator;
+
+UWU_ChatHistory_Iterator UWU_ChatHistory_iter(UWU_ChatHistory *ht) {
+  UWU_ChatHistory_Iterator iter = {};
+
+  iter.start = 0;
+  iter.end = ht->count;
+
+  if (ht->count >= ht->capacity) {
+    iter.end = ht->next_idx;
+    iter.start = iter.end - ht->count;
+  }
+
+  return iter;
+}
+
+// Gets an item from the history!
+// Panics if index is outside of bounds.
+UWU_ChatEntry UWU_ChatHistory_get(UWU_ChatHistory *ht, size_t idx) {
+  UWU_ChatEntry entry = {};
+  if (idx < 0 || idx >= ht->capacity) {
+    UWU_PANIC("Trying to get a ChatEntry (idx: %d) from ChatHistory (count: "
+              "%d, capacity: %d)",
+              idx, ht->count, ht->capacity);
+    return entry;
+  }
+
+  entry = ht->messages[idx];
+  return entry;
+}
