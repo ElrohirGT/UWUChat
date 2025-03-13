@@ -41,7 +41,7 @@
       default = pkgs.mkShell {
         packages =
           [
-            pkgs.zig_0_13
+            pkgs.zig_0_14
             pkgs.openssl
             pkgs.websocat
             pkgs.entr

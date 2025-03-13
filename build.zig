@@ -138,7 +138,7 @@ pub fn build(b: *std.Build) !void {
     }
 
     for (facilio_examples) |example_path_in_dep| {
-        var iter = std.mem.split(u8, example_path_in_dep, "/");
+        var iter = std.mem.splitSequence(u8, example_path_in_dep, "/");
         _ = iter.next();
         const output_name = iter.next().?;
         const step_name = try std.fmt.allocPrint(
