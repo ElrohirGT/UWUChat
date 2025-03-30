@@ -25,3 +25,5 @@ tasks:
       - gf2 -x server.gdb --args ./zig-out/bin/uwuchat_server -p 8080 -b 127.0.0.1 -w 1 -t 1
     silent: true
     desc: "Compile and debug the server with a GDB UI client "
+  clean: 
+    cmd: rm -rf ./build/*
