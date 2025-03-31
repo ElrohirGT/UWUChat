@@ -547,7 +547,7 @@ static void ws_on_message(ws_s *ws, fio_str_info_s msg, uint8_t is_text) {
 
     UWU_User new_user = {
         .username = req_username,
-        .status = msg.data[3],
+        .status = msg.data[2 + username_length],
     };
 
     if (!UWU_UserList_updateUserByName(&active_usernames, &req_username,
