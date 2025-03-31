@@ -26,4 +26,4 @@ tasks:
     silent: true
     desc: "Compile and debug the server with a GDB UI client "
   clean: 
-    cmd: rm -rf ./build/*
+    cmd: rm -rf ./build/* ./.zig-cache/ ./zig-out/
