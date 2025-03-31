@@ -17,7 +17,6 @@
 
     # Nixpkgs instantiated for supported system types.
     nixpkgsFor = forAllSystems (system: import nixpkgs {inherit system;});
-
   in {
     devShells = forAllSystems (system: let
       pkgs = nixpkgsFor.${system};
@@ -56,7 +55,6 @@
 
         shellHook = ''
           UWU_LIB_PATH=${pkgs.lib.makeLibraryPath raylibPkgs}
-          alias server_dev="find src -type f -iname *.c | entr -r zig build run -- -b 127.0.0.1 -p 8080"
         '';
       };
     });
