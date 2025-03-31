@@ -117,6 +117,7 @@ pub fn build(b: *std.Build) !void {
     const clay_example_cmd = b.addRunArtifact(clay_example_exe);
     const clay_example_run = b.step("example:clay", "Run the clay example");
     clay_example_run.dependOn(&clay_example_cmd.step);
+    b.installArtifact(clay_example_exe);
 
     // First we create the basic executable
     const exe = b.addExecutable(.{
@@ -170,6 +171,11 @@ pub fn build(b: *std.Build) !void {
     // standard location when the user invokes the "install" step (the default
     // step when running `zig build`).
     b.installArtifact(exe);
+    b.installDirectory(.{
+        .source_dir = .{ .cwd_relative = "src/resources/" },
+        .install_dir = .{ .bin = {} },
+        .install_subdir = "resources",
+    });
 
     // This *creates* a Run step in the build graph, to be executed when another
     // step is evaluated that depends on it. The next line below will establish
