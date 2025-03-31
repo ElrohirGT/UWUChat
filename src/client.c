@@ -53,7 +53,8 @@ static UWU_UserList active_usernames;
 // Current chat history. BY DESIGN everytime the user changes its current chat,
 // - The WHOLE chat history is fetched from the server, this is done ONLY ONCE, 
 // - After that, every new message received from the server is append it to the current object.
-static UWU_ChatHistory UWU_current_chat;
+// - When set to NULL, no chat history is showed.
+static UWU_ChatHistory* UWU_current_chat;
 
 // The max quantity of messages a chat history can hold...
 const size_t MAX_MESSAGES_PER_CHAT = 100;
@@ -75,8 +76,7 @@ void UWU_Update() {
 // Callback when WebSocket is opened
 void on_open(ws_s *ws) {
     printf("Connected to WebSocket server!\n");
-    fio_str_info_s msg = {.data = "Hello, WebSocket!", .len = 17};
-    websocket_write(ws, msg, 1);  // Send a text message
+    UWU_ws_client = ws;
 }
 
 // Callback when a message is received
@@ -87,6 +87,18 @@ void on_message(ws_s *ws, fio_str_info_s msg, uint8_t is_text) {
 // Callback when WebSocket is closed
 void on_close(intptr_t uuid, void *udata) {
     printf("WebSocket connection closed.\n");
+    UWU_ws_client = NULL;
+}
+
+// Send a message to the WebSocket server.
+void send_message(ws_s *ws, const UWU_String *msg) {
+    if (ws != NULL) {
+        // BOILER PLATE CODE: Should be replaced with message building as protocol specifies.
+        fio_str_info_s message = {.data = msg->data, .len = msg->length};
+        websocket_write(ws, message, 1);
+    } else {
+        printf("Cannot send message: WebSocket is not connected.\n");
+    }
 }
 
 // ======================================
@@ -143,7 +155,43 @@ void HandleClayErrors(Clay_ErrorData errorData) {
 //  MAIN
 // =================================
 
-void *start_fio_loop(void *arg) {
+// Initializes client state...
+void initialize_client_state(UWU_Err err, char* username)  {
+
+    size_t name_length = strlen(username) + 1;
+    char *username_data = malloc(sizeof(name_length));
+    if (username_data= NULL) {
+        err = MALLOC_FAILED;
+        return;
+    }
+    strcpy(username_data, username);
+    UWU_String current_username = {.data = username_data, .length = name_length};
+    
+    // User initialization
+    UWU_current_user.username = current_username;
+    UWU_current_user.status = ACTIVE;
+
+    // Current Users initialization
+    active_usernames = UWU_UserList_init();
+
+    // Curretn chat initalization
+    UWU_current_chat = NULL;
+}
+
+// Clean client state...
+void deinitialize_server_state() {
+  fprintf(stderr, "Cleaning Current User ...\n");
+  UWU_User_free(&UWU_current_user);
+
+  fprintf(stderr, "Cleaning User List...\n");
+  UWU_UserList_deinit(&active_usernames);
+
+  fprintf(stderr, "Cleaning Current Chat...\n");
+  UWU_ChatHistory_deinit(UWU_current_chat);
+}
+
+// Secondary Thread executed on background for client websocket handling.
+void *UWU_WebsocketClientLoop(void *arg) {
     char **params = (char **)arg;
     char *username = params[0]; // First parameter: username
     char *host = params[1];      // Second parameter: WebSocket URL
@@ -164,29 +212,42 @@ void *start_fio_loop(void *arg) {
         return NULL;
     }
 
-    // Start facil.io event loop
-    fio_start(.threads = 1);  // Run facil.io event loop
+    // Start client event loop
+    fio_start(.threads = 1);
 
     return NULL;
 }
 
 int main(int argc, char *argv[]) {
-
     // Ensure the user provides both the username and WebSocket URL as arguments
     if (argc != 3) {
         fprintf(stderr, "Usage: %s <Username> <WebSocket_URL>\n", argv[0]);
         return 1;
     }
+    
+    if (strlen(argv[1]) > 255) {
+        UWU_PANIC("Username to large!...");
+        return 1;
+    }
 
     char *username = argv[1];  // Get the username from the command line arguments
     char *ws_url = argv[2];    // Get the WebSocket URL from the command line arguments
-                               //
+
+
+    UWU_Err err = NO_ERROR;
+
+    initialize_client_state(err, username);
+    if (err != NO_ERROR) {
+        UWU_PANIC("Unable to initialize server state...");
+        return 1;
+    }
+
     // Prepare the parameters to pass to the thread (username and URL)
     char *params[] = {username, ws_url};
 
     // Initializing Websocket client on separate thread.
     pthread_t fio_thread;
-    if (pthread_create(&fio_thread, NULL, start_fio_loop, (void *)params) != 0) {
+    if (pthread_create(&fio_thread, NULL, UWU_WebsocketClientLoop, (void *)params) != 0) {
         UWU_PANIC("Failed to create WebSocket thread");
         return 1;
     }
@@ -223,7 +284,7 @@ int main(int argc, char *argv[]) {
         
     // }
 
-    // Clean up (not actually reached in this example)
     pthread_join(fio_thread, NULL);
+    deinitialize_server_state();
     return 0;
 }
