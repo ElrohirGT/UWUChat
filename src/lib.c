@@ -177,18 +177,6 @@ typedef struct {
   size_t length;
 } UWU_String;
 
-UWU_Bool UWU_String_equals(UWU_String *a, UWU_String *b) {
-  if (a->length != b->length) {
-    return FALSE;
-  }
-
-  if (0 == memcmp(a->data, b->data, a->length)) {
-    return TRUE;
-  }
-
-  return FALSE;
-}
-
 UWU_Bool UWU_String_startsWith(UWU_String *str, UWU_String *prefix) {
   if (str->length < prefix->length) {
     return FALSE;
@@ -379,13 +367,7 @@ UWU_Bool UWU_String_equal(UWU_String *a, UWU_String *b) {
     return FALSE;
   }
 
-  for (size_t i = 0; i < a->length; i++) {
-    if (UWU_String_getChar(a, i) != UWU_String_getChar(b, i)) {
-      return FALSE;
-    }
-  }
-
-  return TRUE;
+  return 0 == memcmp(a->data, b->data, a->length);
 }
 
 /* *****************************************************************************
@@ -497,6 +479,44 @@ typedef struct {
   size_t length;
 } UWU_UserList;
 
+// Attempts to find a user by it's name.
+// Returns a reference to the found user. NULL otherwise.
+UWU_User *UWU_UserList_findByName(UWU_UserList *list, UWU_String *name) {
+  for (struct UWU_UserListNode *current = list->start; current != NULL;
+       current = current->next) {
+    if (current->is_sentinel) {
+      continue;
+    }
+
+    if (UWU_String_equal(&current->data.username, name)) {
+      return &current->data;
+    }
+  }
+
+  return NULL;
+}
+
+// Tries to update the first user it finds with the given username.
+// Returns true if it found a user to update. False otherwise.
+UWU_Bool UWU_UserList_updateUserByName(UWU_UserList *list, UWU_String *name,
+                                       UWU_User new_data) {
+  for (struct UWU_UserListNode *current = list->start; current != NULL;
+       current = current->next) {
+    if (current->is_sentinel) {
+      continue;
+    }
+
+    if (!UWU_String_equal(&current->data.username, name)) {
+      continue;
+    }
+
+    current->data = new_data;
+    return TRUE;
+  }
+
+  return FALSE;
+}
+
 UWU_UserList UWU_UserList_init() {
   UWU_Err err = NO_ERROR;
   UWU_String sentinel_name = {
@@ -535,8 +555,8 @@ void UWU_UserList_deinit(UWU_UserList *list) {
 }
 
 // Inserts a specified node to the start of the list.
-// Remember, the list owns the values so this will create a copy of `*node` and
-// therefore it can fail!
+// Remember, the list owns the values so this will create a copy of `*node`
+// and therefore it can fail!
 void UWU_UserList_insertStart(UWU_UserList *list, struct UWU_UserListNode *node,
                               UWU_Err err) {
   struct UWU_UserListNode *copy = UWU_UserListNode_copy(node, err);
@@ -558,8 +578,8 @@ void UWU_UserList_insertStart(UWU_UserList *list, struct UWU_UserListNode *node,
 }
 
 // Inserts a specified node to the end of the list.
-// Remember, the list owns the values so this will create a copy of `*node` and
-// therefore it can fail!
+// Remember, the list owns the values so this will create a copy of `*node`
+// and therefore it can fail!
 void UWU_UserList_insertEnd(UWU_UserList *list, struct UWU_UserListNode *node,
                             UWU_Err err) {
 
@@ -581,8 +601,8 @@ void UWU_UserList_insertEnd(UWU_UserList *list, struct UWU_UserListNode *node,
   list->length += 1;
 }
 
-// Tries to remove a user by it's username, if the username is not found then it
-// simply does nothing.
+// Tries to remove a user by it's username, if the username is not found then
+// it simply does nothing.
 //
 // REMEMBER!! This frees the associated memory of the removed node.
 void UWU_UserList_removeByUsernameIfExists(UWU_UserList *list,
@@ -682,8 +702,8 @@ void UWU_ChatHistory_addMessage(UWU_ChatHistory *hist, UWU_ChatEntry entry) {
 }
 
 // Gives limits for iterating over a `UWU_ChatHistory` in insertion order.
-// `start` and `end` ARE NOT indexes! Make sure to apply the % operator because
-// they can grow far beyond what the collection could hold!
+// `start` and `end` ARE NOT indexes! Make sure to apply the % operator
+// because they can grow far beyond what the collection could hold!
 typedef struct {
   size_t start;
   size_t end;

@@ -338,6 +338,12 @@ static void on_http_upgrade(http_s *h, char *requested_protocol, size_t len) {
     http_send_error(h, 500);
   }
 
+  UWU_User *user = UWU_UserList_findByName(&active_usernames, uwu_nickname);
+  if (user != NULL) {
+    fprintf(stderr, "ERROR: Can't connect with an already used username!\n");
+    http_send_error(h, 400);
+  }
+
   /* Test for upgrade protocol (websocket vs. sse) */
   if (len == 3 && requested_protocol[1] == 's') {
     if (fio_cli_get_bool("-v")) {
@@ -377,7 +383,7 @@ static void sse_on_open(http_sse_s *sse) {
   http_sse_subscribe(sse, .channel = GROUP_CHAT_CHANNEL);
   http_sse_set_timout(sse, fio_cli_get_i("-ping"));
   FIOBJ tmp = fiobj_str_copy((FIOBJ)sse->udata);
-  fiobj_str_write(tmp, " joind the chat only to listen.", 31);
+  fiobj_str_write(tmp, " joind the chat only to listen.\n", 32);
   fio_publish(.channel = GROUP_CHAT_CHANNEL, .message = fiobj_obj2cstr(tmp));
   fiobj_free(tmp);
 }
@@ -428,9 +434,20 @@ static void ws_on_message(ws_s *ws, fio_str_info_s msg, uint8_t is_text) {
         .length = username_length,
     };
 
-    if (!UWU_String_equals(&req_username, conn_username)) {
+    if (!UWU_String_equal(&req_username, conn_username)) {
       fprintf(stderr, "Error: Another username can't change the status of the "
                       "current username!\n");
+      return;
+    }
+
+    UWU_User new_user = {
+        .username = req_username,
+        .status = msg.data[3],
+    };
+
+    if (!UWU_UserList_updateUserByName(&active_usernames, &req_username,
+                                       new_user)) {
+      UWU_PANIC("Error: No username to update status found!");
       return;
     }
     break;
@@ -517,7 +534,7 @@ static void ws_on_open(ws_s *ws) {
   // FIXME: Change message!
   // 3. Notify other clients that this user has recently connected...
   FIOBJ tmp = fiobj_str_new(user_name->data, user_name->length);
-  fiobj_str_write(tmp, " joind the chat.", 16);
+  fiobj_str_write(tmp, " joind the chat.\n", 17);
   fio_publish(.channel = GROUP_CHAT_CHANNEL, .message = fiobj_obj2cstr(tmp));
   fiobj_free(tmp);
 }
