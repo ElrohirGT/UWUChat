@@ -119,6 +119,23 @@ pub fn build(b: *std.Build) !void {
     clay_example_run.dependOn(&clay_example_cmd.step);
     b.installArtifact(clay_example_exe);
 
+    const client_exe = b.addExecutable(.{
+        .name = "client",
+        .target = target,
+        .optimize = optimize,
+    });
+    client_exe.addCSourceFile(.{ .file = .{ .cwd_relative = "src/client.c" } });
+    while (lib_paths.next()) |path| {
+        client_exe.addLibraryPath(.{ .cwd_relative = path });
+    }
+    client_exe.linkLibC();
+    client_exe.linkLibrary(raylib);
+
+    const client_cmd = b.addRunArtifact(client_exe);
+    const client_run = b.step("client", "Run the UWUChat client");
+    client_run.dependOn(&client_cmd.step);
+    b.installArtifact(client_exe);
+
     // First we create the basic executable
     const exe = b.addExecutable(.{
         .name = "uwuchat_server",
