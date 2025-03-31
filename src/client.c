@@ -160,7 +160,7 @@ void initialize_client_state(UWU_Err err, char* username)  {
 
     size_t name_length = strlen(username) + 1;
     char *username_data = malloc(sizeof(name_length));
-    if (username_data= NULL) {
+    if (NULL == username_data) {
         err = MALLOC_FAILED;
         return;
     }
