@@ -50,6 +50,7 @@
             pkgs.go-task
             pkgs.valgrind
             pkgs.process-compose
+            pkgs.clang-tools # For clang-format and others...
           ]
           ++ raylibPkgs;
 
