@@ -404,16 +404,29 @@ static void ws_on_message(ws_s *ws, fio_str_info_s msg, uint8_t is_text) {
   }
   printf("Message from: %.*s\n", (int)user_name->length, user_name->data);
 
+  if (msg.len <= 0) {
+    fprintf(stderr, "Error: Message is too short!\n");
+    return;
+  }
+
+  switch (msg.data[0]) {
+  case CHANGE_STATUS:
+    break;
+  default:
+    fprintf(stderr, "Error: Unrecognized message!\n");
+    return;
+  }
+
   // Add the Nickname to the message
-  FIOBJ str = fiobj_str_new(user_name->data, user_name->length);
-  fiobj_str_write(str, ": ", 2);
-  fiobj_str_write(str, msg.data, msg.len);
-  // publish
-  fio_publish(.channel = GROUP_CHAT_CHANNEL, .message = fiobj_obj2cstr(str));
-  // free the string
-  fiobj_free(str);
-  (void)is_text; // we don't care.
-  (void)ws;      // this could be used to send an ACK, but we don't.
+  // FIOBJ str = fiobj_str_new(user_name->data, user_name->length);
+  // fiobj_str_write(str, ": ", 2);
+  // fiobj_str_write(str, msg.data, msg.len);
+  // // publish
+  // fio_publish(.channel = GROUP_CHAT_CHANNEL, .message = fiobj_obj2cstr(str));
+  // // free the string
+  // fiobj_free(str);
+  // (void)is_text; // we don't care.
+  // (void)ws;      // this could be used to send an ACK, but we don't.
 }
 
 // When a new user connects to the server we need to do a lot of stuff:
