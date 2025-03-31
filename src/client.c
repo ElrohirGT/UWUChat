@@ -95,7 +95,7 @@ void send_message(ws_s *ws, const UWU_String *msg) {
     if (ws != NULL) {
         // BOILER PLATE CODE: Should be replaced with message building as protocol specifies.
         fio_str_info_s message = {.data = msg->data, .len = msg->length};
-        websocket_write(ws, message, 1);
+        websocket_write(ws, message, 0);
     } else {
         printf("Cannot send message: WebSocket is not connected.\n");
     }
