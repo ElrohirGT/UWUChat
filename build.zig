@@ -144,6 +144,28 @@ pub fn build(b: *std.Build) !void {
     client_run.dependOn(&client_cmd.step);
     b.installArtifact(client_exe);
 
+    const test_client_exe = b.addExecutable(.{
+        .name = "test_client",
+        .target = target,
+        .optimize = optimize,
+    });
+    test_client_exe.addCSourceFile(.{
+        .file = .{ .cwd_relative = "src/cli_client.c" },
+        .flags = &server_comp_flags,
+    });
+    while (lib_paths.next()) |path| {
+        test_client_exe.addLibraryPath(.{ .cwd_relative = path });
+    }
+    test_client_exe.linkLibC();
+    test_client_exe.linkLibrary(facilio);
+    for (facilio_includes) |dep_path| {
+        test_client_exe.addIncludePath(facilio_dep.path(dep_path));
+    }
+
+    const test_client_cmd = b.addRunArtifact(test_client_exe);
+    const test_client_run = b.step("test_client", "Run the testing client");
+    test_client_run.dependOn(&test_client_cmd.step);
+
     // First we create the basic executable
     const exe = b.addExecutable(.{
         .name = "uwuchat_server",
