@@ -398,8 +398,8 @@ WebSockets Callbacks
 
 static void ws_on_message(ws_s *ws, fio_str_info_s msg, uint8_t is_text) {
 
-  UWU_String *user_name = (UWU_String*) websocket_udata_get(ws);
-  if (!user_name) {
+  UWU_String *user_name = (UWU_String *)websocket_udata_get(ws);
+  if (NULL == user_name) {
     fprintf(stderr, "Error: No user found for this WebSocket.\n");
     return;
   }
