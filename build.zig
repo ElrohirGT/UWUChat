@@ -46,7 +46,7 @@ const facilio_examples = [_][]const u8{
     "examples/http-hello.c",
 };
 
-const c_compile_flags = [_][]const u8{"-Weverything"};
+const c_compile_flags = [_][]const u8{ "-Weverything", "-pthread" };
 
 // Although this function looks imperative, note that its job is to
 // declaratively construct a build graph that will be executed by an external
