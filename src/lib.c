@@ -177,6 +177,18 @@ typedef struct {
   size_t length;
 } UWU_String;
 
+UWU_Bool UWU_String_equals(UWU_String *a, UWU_String *b) {
+  if (a->length != b->length) {
+    return FALSE;
+  }
+
+  if (0 == memcmp(a->data, b->data, a->length)) {
+    return TRUE;
+  }
+
+  return FALSE;
+}
+
 UWU_Bool UWU_String_startsWith(UWU_String *str, UWU_String *prefix) {
   if (str->length < prefix->length) {
     return FALSE;

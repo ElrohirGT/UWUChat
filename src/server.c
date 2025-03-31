@@ -397,12 +397,13 @@ WebSockets Callbacks
 
 static void ws_on_message(ws_s *ws, fio_str_info_s msg, uint8_t is_text) {
 
-  UWU_String *user_name = (UWU_String *)websocket_udata_get(ws);
-  if (NULL == user_name) {
+  UWU_String *conn_username = (UWU_String *)websocket_udata_get(ws);
+  if (NULL == conn_username) {
     fprintf(stderr, "Error: No user found for this WebSocket.\n");
     return;
   }
-  printf("Message from: %.*s\n", (int)user_name->length, user_name->data);
+  printf("Message from: %.*s\n", (int)conn_username->length,
+         conn_username->data);
 
   if (msg.len <= 0) {
     fprintf(stderr, "Error: Message is too short!\n");
@@ -411,6 +412,27 @@ static void ws_on_message(ws_s *ws, fio_str_info_s msg, uint8_t is_text) {
 
   switch (msg.data[0]) {
   case CHANGE_STATUS:
+    // Message should contain at least a username length
+    if (msg.len < 2) {
+      fprintf(stderr, "Error: Message is too short!\n");
+      return;
+    }
+    char username_length = msg.data[1];
+    if (username_length <= 0) {
+      fprintf(stderr, "Error: The username is too short!\n");
+      return;
+    }
+
+    UWU_String req_username = {
+        .data = &msg.data[2],
+        .length = username_length,
+    };
+
+    if (!UWU_String_equals(&req_username, conn_username)) {
+      fprintf(stderr, "Error: Another username can't change the status of the "
+                      "current username!\n");
+      return;
+    }
     break;
   default:
     fprintf(stderr, "Error: Unrecognized message!\n");
