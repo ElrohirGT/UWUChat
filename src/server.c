@@ -73,7 +73,6 @@ two different browser windows.
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <stdbool.h>
 
 /* *****************************************************************************
 Constants
@@ -97,8 +96,8 @@ int remove_if_matches(void *context, struct hashmap_element_s *const e) {
   UWU_String tmp_after = UWU_String_combineWithOther(user_name, &SEPARATOR);
   UWU_String tmp_before = UWU_String_combineWithOther(&SEPARATOR, user_name);
 
-  bool starts_with_username = UWU_String_startsWith(&hash_key, &tmp_after);
-  bool ends_with_username = UWU_String_endsWith(&hash_key, &tmp_before);
+  UWU_Bool starts_with_username = UWU_String_startsWith(&hash_key, &tmp_after);
+  UWU_Bool ends_with_username = UWU_String_endsWith(&hash_key, &tmp_before);
 
   UWU_String_freeWithMalloc(&tmp_after);
   UWU_String_freeWithMalloc(&tmp_before);
@@ -159,7 +158,7 @@ static struct hashmap_s chats;
 static UWU_ChatHistory group_chat;
 
 // Initializes the server state...
-void initialize_server_state(UWU_ERR err) {
+void initialize_server_state(UWU_Err err) {
   active_usernames = UWU_UserList_init();
 
   char *group_chat_name = malloc(sizeof(char));
@@ -219,7 +218,7 @@ int main(int argc, char const *argv[]) {
   /* optimize WebSocket pub/sub for multi-connection broadcasting */
   websocket_optimize4broadcasts(WEBSOCKET_OPTIMIZE_PUBSUB, 1);
 
-  UWU_ERR err = NO_ERROR;
+  UWU_Err err = NO_ERROR;
 
   initialize_server_state(err);
 
@@ -329,7 +328,7 @@ static void on_http_upgrade(http_s *h, char *requested_protocol, size_t len) {
   fprintf(stderr, "The nickname `%s` is valid! Connecting...\n",
           c_nickname.data);
 
-  UWU_ERR err = NO_ERROR;
+  UWU_Err err = NO_ERROR;
   UWU_String *uwu_nickname = malloc(sizeof(UWU_String));
   *uwu_nickname = UWU_String_copyFromFio(fio_nickname, err);
 
@@ -427,7 +426,7 @@ static void ws_on_open(ws_s *ws) {
   //     ws, (fio_str_info_s){.data = "Welcome to the chat-room.", .len = 25},
   //     1);
 
-  UWU_ERR err = NO_ERROR;
+  UWU_Err err = NO_ERROR;
 
   // 1. Add the user as an active user.
   UWU_String *user_name = websocket_udata_get(ws);
