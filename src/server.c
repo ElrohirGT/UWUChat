@@ -415,11 +415,11 @@ static void ws_on_message(ws_s *ws, fio_str_info_s msg, uint8_t is_text) {
     fprintf(stderr, "Error: Message is too short!\n");
     return;
   }
-
+  
+  uint8_t *converted_msg = malloc(msg.len * sizeof(uint8_t));
   // Convert msg to byte if text
   if (is_text) {
     int byte_index = 0;
-    uint8_t converted_msg[msg.len];
 
     // Primer byte: tipo de mensaje
     converted_msg[byte_index++] = msg.data[0] - '0';
@@ -508,9 +508,11 @@ static void ws_on_message(ws_s *ws, fio_str_info_s msg, uint8_t is_text) {
         if (j < byte_index - 1) printf(", ");
     }
     printf("]\n");
+  } else {
+    *memcpy(converted_msg, msg.data, msg.len);
   }
 
-  switch (msg.data[0]) {
+  switch (converted_msg[0]) {
   case GET_USER:      
     if (msg.len < 3) {     
       fprintf(stderr, "Error: Message is too short!\n");
@@ -522,8 +524,8 @@ static void ws_on_message(ws_s *ws, fio_str_info_s msg, uint8_t is_text) {
   //     fprintf(stderr, "Error: The username is too short!\n");
   //     return;
   //   }
-      
-  //   break;
+    free(converted_msg);
+    break;
   case CHANGE_STATUS:
     // Message should contain at least a username length
     if (msg.len < 2) {
@@ -557,9 +559,11 @@ static void ws_on_message(ws_s *ws, fio_str_info_s msg, uint8_t is_text) {
       UWU_PANIC("Error: No username to update status found!");
       return;
     }
+    free(converted_msg);
     break;
   default:
     fprintf(stderr, "Error: Unrecognized message!\n");
+    free(converted_msg);
     return;
   }
 
