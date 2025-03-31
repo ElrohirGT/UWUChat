@@ -31,9 +31,9 @@ static const UWU_ERR ARENA_ALLOC_FAILED = (size_t *)3;
 static const UWU_ERR NO_SPACE_LEFT = (size_t *)4;
 static const UWU_ERR HASHMAP_INITIALIZATION_ERROR = (size_t *)5;
 
-typedef int bool;
-static const bool TRUE = 1;
-static const bool FALSE = 0;
+typedef int UWU_bool;
+static const UWU_bool TRUE = 1;
+static const UWU_bool FALSE = 0;
 
 // A panic represents an irrecoverable error.
 //
@@ -138,7 +138,7 @@ UWU_Arena UWU_Arena_init(size_t capacity, UWU_ERR err) {
 // Success: Returns a pointer to the first byte of the memory region requested.
 // Failure: Sets err equal to `UWU_ARENA_FAILED_ALLOCATION`.
 void *UWU_Arena_alloc(UWU_Arena *arena, size_t size, size_t *err) {
-  bool has_space = arena->size + size <= arena->capacity;
+  UWU_bool has_space = arena->size + size <= arena->capacity;
   if (!has_space) {
     err = ARENA_ALLOC_FAILED;
     return NULL;
@@ -177,7 +177,7 @@ typedef struct {
   size_t length;
 } UWU_String;
 
-bool UWU_String_startsWith(UWU_String *str, UWU_String *prefix) {
+UWU_bool UWU_String_startsWith(UWU_String *str, UWU_String *prefix) {
   if (str->length < prefix->length) {
     return FALSE;
   }
@@ -189,7 +189,7 @@ bool UWU_String_startsWith(UWU_String *str, UWU_String *prefix) {
   return FALSE;
 }
 
-bool UWU_String_endsWith(UWU_String *str, UWU_String *postfix) {
+UWU_bool UWU_String_endsWith(UWU_String *str, UWU_String *postfix) {
   if (str->length < postfix->length) {
     return FALSE;
   }
@@ -204,7 +204,7 @@ bool UWU_String_endsWith(UWU_String *str, UWU_String *postfix) {
 
 // Returns `TRUE` if `first` goes first alphabetically speaking.
 // False otherwise.
-bool UWU_String_firstGoesFirst(UWU_String *first, UWU_String *other) {
+UWU_bool UWU_String_firstGoesFirst(UWU_String *first, UWU_String *other) {
   size_t min_length = first->length;
   if (other->length < min_length) {
     min_length = other->length;
@@ -362,7 +362,7 @@ uint8_t UWU_String_getChar(UWU_String *str, size_t idx) {
 }
 
 // Checks if the given `a` string is equal to the other `b` string.
-bool UWU_String_equal(UWU_String *a, UWU_String *b) {
+UWU_bool UWU_String_equal(UWU_String *a, UWU_String *b) {
   if (a->length != b->length) {
     return FALSE;
   }
@@ -410,7 +410,7 @@ struct UWU_UserListNode {
   // The linked list will always hold two nodes at the extremes.
   // This nodes are the sentinels nodes, all other nodes should NOT BE sentinels
   // nodes.
-  bool is_sentinel;
+  UWU_bool is_sentinel;
   // The data the node is holding.
   UWU_User data;
   // The previous node in the list.

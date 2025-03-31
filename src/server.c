@@ -96,8 +96,8 @@ int remove_if_matches(void *context, struct hashmap_element_s *const e) {
   UWU_String tmp_after = UWU_String_combineWithOther(user_name, &SEPARATOR);
   UWU_String tmp_before = UWU_String_combineWithOther(&SEPARATOR, user_name);
 
-  bool starts_with_username = UWU_String_startsWith(&hash_key, &tmp_after);
-  bool ends_with_username = UWU_String_endsWith(&hash_key, &tmp_before);
+  UWU_bool starts_with_username = UWU_String_startsWith(&hash_key, &tmp_after);
+  UWU_bool ends_with_username = UWU_String_endsWith(&hash_key, &tmp_before);
 
   UWU_String_freeWithMalloc(&tmp_after);
   UWU_String_freeWithMalloc(&tmp_before);
