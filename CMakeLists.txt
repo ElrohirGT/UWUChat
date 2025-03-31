@@ -8,7 +8,7 @@ add_subdirectory(deps/raylib)
 add_subdirectory(deps/facil.io)
 
 # Define the executable
-add_executable(${PROJECT_NAME} src/client.c src/lib.c)
+add_executable(${PROJECT_NAME} src/client.c)
 target_sources(${PROJECT_NAME} PRIVATE ${PROJECT_SOURCES})
 target_include_directories(${PROJECT_NAME} PRIVATE ${PROJECT_INCLUDE})
 target_link_libraries(${PROJECT_NAME} PRIVATE raylib facil.io)
