@@ -200,8 +200,14 @@ void *UWU_WebsocketClientLoop(void *arg) {
     printf("Connecting to WebSocket server at: %s\n", host);
 
     char url[256];
-    snprintf(url, sizeof(url), "%s?name=%s", host, username);
+    int err = snprintf(url, sizeof(url), "%s?name=%s", host, username);
+    if (err < 0) {
+        printf("Could not create connection url");
+        deinitialize_server_state();
+        exit(1);
+    }
     printf("Username: %s\n", username);
+    printf("Final connection URL: %s\n", &url);
     
     // Connect to WebSocket server
     if (websocket_connect(url, 
