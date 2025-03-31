@@ -46,7 +46,8 @@ const facilio_examples = [_][]const u8{
     "examples/http-hello.c",
 };
 
-const c_compile_flags = [_][]const u8{ "-Weverything", "-pthread" };
+const server_comp_flags = [_][]const u8{ "-Weverything", "-pthread" };
+const client_comp_flags = [_][]const u8{"-pthread"};
 
 // Although this function looks imperative, note that its job is to
 // declaratively construct a build graph that will be executed by an external
@@ -124,12 +125,19 @@ pub fn build(b: *std.Build) !void {
         .target = target,
         .optimize = optimize,
     });
-    client_exe.addCSourceFile(.{ .file = .{ .cwd_relative = "src/client.c" } });
+    client_exe.addCSourceFile(.{
+        .file = .{ .cwd_relative = "src/client.c" },
+        .flags = &client_comp_flags,
+    });
     while (lib_paths.next()) |path| {
         client_exe.addLibraryPath(.{ .cwd_relative = path });
     }
     client_exe.linkLibC();
     client_exe.linkLibrary(raylib);
+    client_exe.linkLibrary(facilio);
+    for (facilio_includes) |dep_path| {
+        client_exe.addIncludePath(facilio_dep.path(dep_path));
+    }
 
     const client_cmd = b.addRunArtifact(client_exe);
     const client_run = b.step("client", "Run the UWUChat client");
@@ -149,7 +157,7 @@ pub fn build(b: *std.Build) !void {
     // Finally we add the main.c file to our executable as a source file.
     exe.addCSourceFile(.{
         .file = .{ .cwd_relative = "src/server.c" },
-        .flags = &c_compile_flags,
+        .flags = &server_comp_flags,
     });
     for (facilio_includes) |dep_path| {
         exe.addIncludePath(facilio_dep.path(dep_path));
