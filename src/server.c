@@ -431,32 +431,31 @@ static void ws_on_message(ws_s *ws, fio_str_info_s msg, uint8_t is_text) {
     converted_msg[byte_index++] = input_length;
 
     while (i < msg.len && byte_index < input_length + 2) {
-        int value = 0;
+      int value = 0;
 
-        // Verificar si hay al menos 3 caracteres disponibles para extraer un número de 3 dígitos
-        if (i + 2 < msg.len &&
-            msg.data[i] >= '0' && msg.data[i] <= '2' &&
-            msg.data[i + 1] >= '0' && msg.data[i + 1] <= '9' &&
-            msg.data[i + 2] >= '0' && msg.data[i + 2] <= '9') {
-            value = (msg.data[i] - '0') * 100 +
-                    (msg.data[i + 1] - '0') * 10 +
-                    (msg.data[i + 2] - '0');
-            i += 3;
-        }
-        // Verificar si hay al menos 2 caracteres disponibles para extraer un número de 2 dígitos
-        else if (i + 1 < msg.len &&
-                 msg.data[i] >= '0' && msg.data[i] <= '9' &&
-                 msg.data[i + 1] >= '0' && msg.data[i + 1] <= '9') {
-            value = (msg.data[i] - '0') * 10 + (msg.data[i + 1] - '0');
-            i += 2;
-        }
-        // Extraer un solo dígito
-        else {
-            value = msg.data[i] - '0';
-            i += 1;
-        }
+      // Verificar si hay al menos 3 caracteres disponibles para extraer un
+      // número de 3 dígitos
+      if (i + 2 < msg.len && msg.data[i] >= '0' && msg.data[i] <= '2' &&
+          msg.data[i + 1] >= '0' && msg.data[i + 1] <= '9' &&
+          msg.data[i + 2] >= '0' && msg.data[i + 2] <= '9') {
+        value = (msg.data[i] - '0') * 100 + (msg.data[i + 1] - '0') * 10 +
+                (msg.data[i + 2] - '0');
+        i += 3;
+      }
+      // Verificar si hay al menos 2 caracteres disponibles para extraer un
+      // número de 2 dígitos
+      else if (i + 1 < msg.len && msg.data[i] >= '0' && msg.data[i] <= '9' &&
+               msg.data[i + 1] >= '0' && msg.data[i + 1] <= '9') {
+        value = (msg.data[i] - '0') * 10 + (msg.data[i + 1] - '0');
+        i += 2;
+      }
+      // Extraer un solo dígito
+      else {
+        value = msg.data[i] - '0';
+        i += 1;
+      }
 
-        converted_msg[byte_index++] = value;
+      converted_msg[byte_index++] = value;
     }
 
     if (byte_index - 2 < input_length - 1) {
@@ -474,27 +473,26 @@ static void ws_on_message(ws_s *ws, fio_str_info_s msg, uint8_t is_text) {
       while (i < msg.len && byte_index < input_length + 2) {
         int value = 0;
 
-        // Verificar si hay al menos 3 caracteres disponibles para extraer un número de 3 dígitos
-        if (i + 2 < msg.len &&
-            msg.data[i] >= '0' && msg.data[i] <= '2' &&
+        // Verificar si hay al menos 3 caracteres disponibles para extraer un
+        // número de 3 dígitos
+        if (i + 2 < msg.len && msg.data[i] >= '0' && msg.data[i] <= '2' &&
             msg.data[i + 1] >= '0' && msg.data[i + 1] <= '9' &&
             msg.data[i + 2] >= '0' && msg.data[i + 2] <= '9') {
-            value = (msg.data[i] - '0') * 100 +
-                    (msg.data[i + 1] - '0') * 10 +
-                    (msg.data[i + 2] - '0');
-            i += 3;
+          value = (msg.data[i] - '0') * 100 + (msg.data[i + 1] - '0') * 10 +
+                  (msg.data[i + 2] - '0');
+          i += 3;
         }
-        // Verificar si hay al menos 2 caracteres disponibles para extraer un número de 2 dígitos
-        else if (i + 1 < msg.len &&
-                 msg.data[i] >= '0' && msg.data[i] <= '9' &&
+        // Verificar si hay al menos 2 caracteres disponibles para extraer un
+        // número de 2 dígitos
+        else if (i + 1 < msg.len && msg.data[i] >= '0' && msg.data[i] <= '9' &&
                  msg.data[i + 1] >= '0' && msg.data[i + 1] <= '9') {
-            value = (msg.data[i] - '0') * 10 + (msg.data[i + 1] - '0');
-            i += 2;
+          value = (msg.data[i] - '0') * 10 + (msg.data[i + 1] - '0');
+          i += 2;
         }
         // Extraer un solo dígito
         else {
-            value = msg.data[i] - '0';
-            i += 1;
+          value = msg.data[i] - '0';
+          i += 1;
         }
 
         converted_msg[byte_index++] = value;
@@ -504,25 +502,25 @@ static void ws_on_message(ws_s *ws, fio_str_info_s msg, uint8_t is_text) {
     // Imprimir el resultado para verificar
     printf("Converted message: [");
     for (int j = 0; j < byte_index; j++) {
-        printf("%d", converted_msg[j]);
-        if (j < byte_index - 1) printf(", ");
+      printf("%d", converted_msg[j]);
+      if (j < byte_index - 1)
+        printf(", ");
     }
     printf("]\n");
   }
 
   switch (msg.data[0]) {
-  case GET_USER:      
-    if (msg.len < 3) {     
+  case GET_USER:
+    if (msg.len < 3) {
       fprintf(stderr, "Error: Message is too short!\n");
       return;
     }
-    char username_len = msg.data[1];
-    // char username_length = msg.data[1];    
-    //if (username_length <= 0) {
-  //     fprintf(stderr, "Error: The username is too short!\n");
-  //     return;
-  //   }
-      
+    // char username_len = msg.data[1];
+    // if (username_length <= 0) {
+    //   fprintf(stderr, "Error: The username is too short!\n");
+    //   return;
+    // }
+
   //   break;
   case CHANGE_STATUS:
     // Message should contain at least a username length
