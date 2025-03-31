@@ -510,7 +510,7 @@ static void ws_on_message(ws_s *ws, fio_str_info_s msg, uint8_t is_text) {
   }
 
   switch (msg.data[0]) {
-  case GET_USER:
+    case GET_USER: {
     if (msg.len < 3) {
       fprintf(stderr, "Error: Message is too short!\n");
       return;
@@ -522,6 +522,37 @@ static void ws_on_message(ws_s *ws, fio_str_info_s msg, uint8_t is_text) {
     // }
 
   //   break;
+
+      UWU_String user_to_get = {
+        .data = msg.data,
+        .length = msg.data[1]
+      };
+
+      struct UWU_UserListNode *current_node = active_usernames.start;
+
+      // Iteramos por la lista hasta llegar al final (donde el nodo es nulo)
+      while (current_node != NULL && !current_node->is_sentinel) {
+          UWU_User *user = &current_node->data;  // Obtenemos el usuario almacenado en el nodo
+  
+          // Imprimir el nombre de usuario y su estado
+          printf("Username: %.*s, Status: %d\n", (int)user->username.length, user->username.data, user->status);
+  
+          // Avanzamos al siguiente nodo
+          current_node = current_node->next;
+      }
+      // Search user
+      UWU_User *user = UWU_UserList_findByName(&active_usernames, &user_to_get);
+  
+      // Veryfies if user exists
+      if (user == NULL) {
+          fprintf(stderr, "Error: User not found.\n");
+          return;
+      }
+  
+      printf("Username: %.*s\n", (int)user->username.length, user->username.data);
+      printf("%d", user->status);
+      return;
+  }   
   case CHANGE_STATUS:
     // Message should contain at least a username length
     if (msg.len < 2) {
