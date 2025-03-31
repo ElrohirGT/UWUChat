@@ -73,6 +73,7 @@ two different browser windows.
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <stdbool.h>
 
 /* *****************************************************************************
 Constants
@@ -96,8 +97,8 @@ int remove_if_matches(void *context, struct hashmap_element_s *const e) {
   UWU_String tmp_after = UWU_String_combineWithOther(user_name, &SEPARATOR);
   UWU_String tmp_before = UWU_String_combineWithOther(&SEPARATOR, user_name);
 
-  UWU_bool starts_with_username = UWU_String_startsWith(&hash_key, &tmp_after);
-  UWU_bool ends_with_username = UWU_String_endsWith(&hash_key, &tmp_before);
+  bool starts_with_username = UWU_String_startsWith(&hash_key, &tmp_after);
+  bool ends_with_username = UWU_String_endsWith(&hash_key, &tmp_before);
 
   UWU_String_freeWithMalloc(&tmp_after);
   UWU_String_freeWithMalloc(&tmp_before);
@@ -396,8 +397,16 @@ WebSockets Callbacks
 ***************************************************************************** */
 
 static void ws_on_message(ws_s *ws, fio_str_info_s msg, uint8_t is_text) {
+
+  UWU_String *user_name = (UWU_String*) websocket_udata_get(ws);
+  if (!user_name) {
+    fprintf(stderr, "Error: No user found for this WebSocket.\n");
+    return;
+  }
+  printf("Message from: %.*s\n", (int)user_name->length, user_name->data);
+
   // Add the Nickname to the message
-  FIOBJ str = fiobj_str_copy((FIOBJ)websocket_udata_get(ws));
+  FIOBJ str = fiobj_str_new(user_name->data, user_name->length);
   fiobj_str_write(str, ": ", 2);
   fiobj_str_write(str, msg.data, msg.len);
   // publish
@@ -422,6 +431,7 @@ static void ws_on_open(ws_s *ws) {
 
   // 1. Add the user as an active user.
   UWU_String *user_name = websocket_udata_get(ws);
+  websocket_udata_set(ws, user_name);
   if (err != NO_ERROR) {
     char *c_str = UWU_String_toCStr(user_name);
     UWU_PANIC("Failed to add username `%s` to the UserCollection!", c_str);
