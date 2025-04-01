@@ -5,6 +5,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 
 /* *****************************************************************************
 Welcum
@@ -377,6 +378,7 @@ Server Users
 typedef struct {
   UWU_String username;
   UWU_ConnStatus status;
+  time_t last_action;
 } UWU_User;
 
 UWU_User UWU_User_copyFrom(UWU_User *src, UWU_Err err) {
@@ -390,6 +392,7 @@ UWU_User UWU_User_copyFrom(UWU_User *src, UWU_Err err) {
 
   copy.username = user_name_copy;
   copy.status = src->status;
+  copy.last_action = src->last_action;
 
   return copy;
 }

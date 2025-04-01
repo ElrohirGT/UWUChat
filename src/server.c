@@ -60,6 +60,7 @@ two different browser windows.
 #include "fiobj_hash.h"
 #include "fiobj_str.h"
 #include "fiobject.h"
+#include "unistd.h"
 #include "websockets.h"
 #include <fio.h>
 
@@ -67,12 +68,14 @@ two different browser windows.
 #include <fio_cli.h>
 #include <fio_tls.h>
 #include <http.h>
+#include <pthread.h>
 #include <redis_engine.h>
 #include <stddef.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 
 /* *****************************************************************************
 Constants
@@ -82,9 +85,44 @@ Constants
 // A username should not include this sequence of characters.
 static UWU_String SEPARATOR = {.data = "&/)", .length = strlen("&/)")};
 
+// The amount of seconds that need to pass in order for a user to become IDLE.
+static time_t IDLE_SECONDS_LIMIT = 5;
+// The amount of seconds that we wait before checking for IDLE users again.
+static unsigned int IDLE_CHECK_FREQUENCY = 3;
+
 /* *****************************************************************************
 Utilities functions
 ***************************************************************************** */
+
+// Updates the specified user info with the current date.
+void update_last_action(UWU_User *info) {
+  info->last_action = time(NULL);
+  if ((time_t)-1 == info->last_action) {
+    UWU_PANIC("Fatal: Failed to obtain curren time!");
+    return;
+  }
+}
+
+// Creates a status message based on the supplied info user.
+// The calling context becomes the owner of `.data` inside `fio_str_info_s`.
+fio_str_info_s create_changed_status_message(UWU_User *info) {
+  int data_length = 2 + info->username.length + 1;
+  char *data = malloc(sizeof(char) * data_length);
+
+  if (NULL == data) {
+    UWU_PANIC("Fatal: Failed to allocate space for message `changed_status`");
+    fio_str_info_s dummy = {};
+    return dummy;
+  }
+
+  data[0] = CHANGED_STATUS;
+  data[1] = info->username.length;
+  memcpy(&data[2], &info->username, info->username.length);
+  data[data_length - 1] = info->status;
+
+  fio_str_info_s msg = {.len = data_length, .data = data};
+  return msg;
+}
 
 int remove_if_matches(void *context, struct hashmap_element_s *const e) {
   UWU_String *user_name = context;
@@ -157,8 +195,13 @@ static struct hashmap_s chats;
 // Saves all the chat history messages from the Group chat
 static UWU_ChatHistory group_chat;
 
+// Flag to alert all pthreads if the server is shutting off or not.
+// ONLY THE MAIN thread should update this value!
+static UWU_Bool is_shutting_off = FALSE;
+
 // Initializes the server state...
 void initialize_server_state(UWU_Err err) {
+  is_shutting_off = FALSE;
   active_usernames = UWU_UserList_init();
 
   char *group_chat_name = malloc(sizeof(char));
@@ -189,6 +232,7 @@ void deinitialize_server_state() {
   UWU_ChatHistory_deinit(&group_chat);
   fprintf(stderr, "Cleaning DM Chat histories...\n");
   hashmap_destroy(&chats);
+  is_shutting_off = TRUE;
 }
 
 /* *****************************************************************************
@@ -204,6 +248,41 @@ static void on_http_upgrade(http_s *h, char *requested_protocol, size_t len);
 static void initialize_cli(int argc, char const *argv[]);
 /* Initializes Redis, if set by command line arguments */
 static void initialize_redis(void);
+
+/* IDLE detector lifecycle function */
+static void *idle_detector(void *p) {
+  UWU_UserList *active_usernames = (UWU_UserList *)p;
+  while (!is_shutting_off) {
+    fprintf(stderr, "Info: Checking to IDLE %zu active users...\n",
+            active_usernames->length);
+    time_t now = time(NULL);
+
+    if ((clock_t)-1 == now) {
+      UWU_PANIC("Fatal: Failed to get current clock time!");
+      return NULL;
+    }
+
+    for (struct UWU_UserListNode *current = active_usernames->start;
+         current != NULL; current = current->next) {
+      if (current->is_sentinel) {
+        continue;
+      }
+
+      time_t seconds_diff = difftime(now, current->data.last_action);
+      UWU_ConnStatus status = current->data.status;
+      if (seconds_diff >= IDLE_SECONDS_LIMIT && status != INACTIVE) {
+        fprintf(stderr, "Info: Updated %.*s as INACTIVE!",
+                current->data.username.length, current->data.username.data);
+        current->data.status = INACTIVE;
+        fio_str_info_s msg = create_changed_status_message(&current->data);
+        fio_publish(.channel = GROUP_CHAT_CHANNEL, .message = msg);
+      }
+    }
+
+    sleep(IDLE_CHECK_FREQUENCY);
+  }
+  return NULL;
+}
 
 int main(int argc, char const *argv[]) {
   initialize_cli(argc, argv);
@@ -221,6 +300,8 @@ int main(int argc, char const *argv[]) {
   UWU_Err err = NO_ERROR;
 
   initialize_server_state(err);
+  pthread_t pHandler;
+  pthread_create(&pHandler, NULL, &idle_detector, (void *)&active_usernames);
 
   if (err != NO_ERROR) {
     fprintf(stderr,
@@ -255,6 +336,7 @@ int main(int argc, char const *argv[]) {
   // Cleaning up...
   fprintf(stderr, "Shutting down server...\n");
   deinitialize_server_state();
+  pthread_join(pHandler, NULL);
   fio_cli_end();
   fio_tls_destroy(tls);
   return 0;
@@ -473,7 +555,7 @@ static void ws_on_message(ws_s *ws, fio_str_info_s msg, uint8_t is_text) {
     UWU_User *old_user =
         UWU_UserList_findByName(&active_usernames, &req_username);
     if (NULL == old_user) {
-      UWU_PANIC("Error: No user with the given username found!");
+      UWU_PANIC("Fatal: No active user with the given username found!");
       return;
     }
 
@@ -495,22 +577,13 @@ static void ws_on_message(ws_s *ws, fio_str_info_s msg, uint8_t is_text) {
       return;
     }
 
-    if (!UWU_UserList_updateUserByName(&active_usernames, &req_username,
-                                       new_user)) {
-      UWU_PANIC("Error: No username to update status found!");
-      return;
-    }
+    old_user->status = new_user.status;
+    old_user->username = req_username;
+    update_last_action(old_user);
 
-    int data_length = 2 + req_username.length + 1;
-    char *data = malloc(sizeof(char) * data_length);
-    data[0] = CHANGED_STATUS;
-    data[1] = req_username.length;
-    memcpy(&data[2], req_username.data, req_username.length);
-    data[data_length - 1] = new_user.status;
-
-    fio_str_info_s response = {.data = data, .len = data_length};
+    fio_str_info_s response = create_changed_status_message(&new_user);
     fio_publish(.channel = GROUP_CHAT_CHANNEL, .message = response);
-    free(data);
+    free(response.data);
     break;
   default:
     fprintf(stderr, "Error: Unrecognized message!\n");
@@ -551,6 +624,7 @@ static void ws_on_open(ws_s *ws) {
   }
 
   UWU_User user = {.username = *user_name, .status = ACTIVE};
+  update_last_action(&user);
 
   struct UWU_UserListNode node = UWU_UserListNode_newWithValue(user);
   UWU_UserList_insertEnd(&active_usernames, &node, err);
