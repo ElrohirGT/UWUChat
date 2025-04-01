@@ -626,6 +626,60 @@ static void ws_on_message(ws_s *ws, fio_str_info_s msg, uint8_t is_text) {
     fio_publish(.channel = GROUP_CHAT_CHANNEL, .message = response);
     free(response.data);
     break;
+  case SEND_MESSAGE: {
+    if (msg.len < 2) {
+      fprintf(stderr, "Error: Message is too short!\n");
+      return;
+    }
+
+    char username_length = msg.data[1];
+    char message_length = msg.data[2 + username_length];
+
+    UWU_String user_name = {.data = &msg.data[2], .length = username_length};
+
+    UWU_String *first = conn_username;
+    UWU_String *other = &user_name;
+
+    if (!UWU_String_firstGoesFirst(first, other)) {
+      first = &user_name;
+      other = &conn_username;
+    }
+
+    printf("Username: %s\n", first->data);
+    printf("Receptor Username: %s\n", other->data);
+
+    UWU_String tmp = UWU_String_combineWithOther(first, &SEPARATOR);
+    UWU_String combined = UWU_String_combineWithOther(&tmp, other);
+    UWU_String_freeWithMalloc(&tmp);
+
+    UWU_String combined_key = {.data = combined.data,
+                               .length = combined.length};
+
+    UWU_ChatHistory *history = (UWU_ChatHistory *)hashmap_get(
+        &chats, &combined_key, combined_key.length);
+
+    if (!history) {
+      printf("No chat history found for key: %s. Creating new chat history.\n",
+             combined.data);
+      // FIXME: DONT HAVE TO CREATE A CHAT HERE
+      history = malloc(sizeof(UWU_ChatHistory));
+      *history = UWU_ChatHistory_init(MAX_MESSAGES_PER_CHAT, combined, NULL);
+      hashmap_put(&chats, combined.data, combined.length, history);
+    }
+
+    UWU_String content = {.data = &msg.data[message_length],
+                          .length = message_length};
+    UWU_String origin_user = {.data = conn_username->data,
+                              .length = conn_username->length};
+
+    UWU_ChatEntry entry = {.content = content, .origin_username = origin_user};
+
+    printf("This is the key: %s\n", combined.data);
+
+    UWU_ChatHistory_addMessage(history, entry);
+    break;
+  }
+
   default:
     fprintf(stderr, "Error: Unrecognized message!\n");
     return;
