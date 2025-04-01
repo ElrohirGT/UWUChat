@@ -55,12 +55,15 @@ static UWU_UserList active_usernames;
 // current object.
 // - When set to NULL, no chat history is showed.
 static UWU_ChatHistory *UWU_current_chat;
-
-// The max quantity of messages a chat history can hold...
-const size_t MAX_MESSAGES_PER_CHAT = 100;
-
 // Websocket client
 static ws_s *UWU_ws_client = NULL;
+// Text input, holds the current text that has been wrote by the user.
+static UWU_String UWU_TextInput;
+
+// The max quantity of messages a chat history can hold...
+static const size_t MAX_MESSAGES_PER_CHAT = 100;
+static const size_t MAX_CHARACTERS_INPUT = 254;
+#define BACKSPACE 127 // Ascci code for backspace
 
 // ======================================
 //      UPDATE
@@ -89,15 +92,59 @@ void on_close(intptr_t uuid, void *udata) {
 }
 
 // Send a message to the WebSocket server.
-void send_message(ws_s *ws, const UWU_String *msg) {
+// user must be responsable of building the message.
+void send_message(ws_s *ws, const fio_str_info_s *msg) {
   if (ws != NULL) {
-    // BOILER PLATE CODE: Should be replaced with message building as protocol
-    // specifies.
-    fio_str_info_s message = {.data = msg->data, .len = msg->length};
-    websocket_write(ws, message, 0);
+    websocket_write(ws, *msg, 0);
   } else {
     printf("Cannot send message: WebSocket is not connected.\n");
   }
+}
+
+// UTILS
+// ----------------
+
+// Adds a new character to the end of the Textinput buffer.
+void UWU_TextInput_append(char input) {
+  int len = UWU_TextInput.length;
+  if (len < MAX_CHARACTERS_INPUT) {
+    UWU_TextInput.data[len] = input;
+    UWU_TextInput.length++;
+    UWU_TextInput.data[len + 1] = '\0';
+  }
+}
+
+// Removes the last caracter from the textinput buffer by marking it as a null
+// character.
+void UWU_TextInput_remove_last() {
+  int len = UWU_TextInput.length;
+  if (len > 0) {
+    UWU_TextInput.length--;
+    UWU_TextInput.data[len] = '\0';
+  }
+}
+
+// Clears the text input buffer
+void UWU_TextInput_clear() {
+  UWU_TextInput.length = 0;
+  UWU_TextInput.data[0] = '\0';
+}
+
+// Creates a fio string from the current global textinput
+// The caller owns the result.
+fio_str_info_s UWU_TextInput_toFio(UWU_Err err) {
+  fio_str_info_s str_info = {0};
+  str_info.len = strlen(UWU_TextInput.data);
+  str_info.data = malloc(str_info.len);
+
+  if (str_info.data) {
+    memcpy(str_info.data, UWU_TextInput.data, str_info.len);
+  } else {
+    err = MALLOC_FAILED;
+    return str_info;
+  }
+
+  return str_info;
 }
 
 // ======================================
@@ -151,9 +198,18 @@ void HandleClayErrors(Clay_ErrorData errorData) {
 
 // Initializes client state...
 void initialize_client_state(UWU_Err err, char *username) {
-  // Curretn chat initalization
+  // Current chat initalization
   UWU_current_chat = NULL;
 
+  UWU_TextInput.data = (char *)malloc(MAX_CHARACTERS_INPUT + 1);
+  if (UWU_TextInput.data == NULL) {
+    err = MALLOC_FAILED;
+    return;
+  }
+  UWU_TextInput.data[0] = '\0';
+  UWU_TextInput.length = 0;
+
+  // Create current user
   size_t name_length = strlen(username) + 1;
   char *username_data = malloc(name_length);
   if (NULL == username_data) {
@@ -184,6 +240,9 @@ void initialize_client_state(UWU_Err err, char *username) {
 
 // Clean client state...
 void deinitialize_server_state() {
+  fprintf(stderr, "Cleaning Text input...\n");
+  UWU_String_freeWithMalloc(&UWU_TextInput);
+
   fprintf(stderr, "Cleaning Current User ...\n");
   UWU_User_free(&UWU_current_user);
 
