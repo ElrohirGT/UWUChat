@@ -416,99 +416,6 @@ static void ws_on_message(ws_s *ws, fio_str_info_s msg, uint8_t is_text) {
     return;
   }
 
-  // Convert msg to byte if text
-  if (is_text) {
-    int byte_index = 0;
-    uint8_t converted_msg[msg.len];
-
-    // Primer byte: tipo de mensaje
-    converted_msg[byte_index++] = msg.data[0] - '0';
-
-    // Segundo byte: longitud del input (puede ser de 1 o 2 dígitos)
-    int input_length = (msg.data[1] - '0') * 10 + (msg.data[2] - '0');
-    int i = 3;
-
-    converted_msg[byte_index++] = input_length;
-
-    while (i < msg.len && byte_index < input_length + 2) {
-      int value = 0;
-
-      // Verificar si hay al menos 3 caracteres disponibles para extraer un
-      // número de 3 dígitos
-      if (i + 2 < msg.len && msg.data[i] >= '0' && msg.data[i] <= '2' &&
-          msg.data[i + 1] >= '0' && msg.data[i + 1] <= '9' &&
-          msg.data[i + 2] >= '0' && msg.data[i + 2] <= '9') {
-        value = (msg.data[i] - '0') * 100 + (msg.data[i + 1] - '0') * 10 +
-                (msg.data[i + 2] - '0');
-        i += 3;
-      }
-      // Verificar si hay al menos 2 caracteres disponibles para extraer un
-      // número de 2 dígitos
-      else if (i + 1 < msg.len && msg.data[i] >= '0' && msg.data[i] <= '9' &&
-               msg.data[i + 1] >= '0' && msg.data[i + 1] <= '9') {
-        value = (msg.data[i] - '0') * 10 + (msg.data[i + 1] - '0');
-        i += 2;
-      }
-      // Extraer un solo dígito
-      else {
-        value = msg.data[i] - '0';
-        i += 1;
-      }
-
-      converted_msg[byte_index++] = value;
-    }
-
-    if (byte_index - 2 < input_length - 1) {
-      byte_index = 0;
-
-      // Primer byte: tipo de mensaje
-      converted_msg[byte_index++] = msg.data[0] - '0';
-
-      // Segundo byte: longitud del input (puede ser de 1 o 2 dígitos)
-      int input_length = msg.data[1] - '0';
-      int i = 2;
-
-      converted_msg[byte_index++] = input_length;
-
-      while (i < msg.len && byte_index < input_length + 2) {
-        int value = 0;
-
-        // Verificar si hay al menos 3 caracteres disponibles para extraer un
-        // número de 3 dígitos
-        if (i + 2 < msg.len && msg.data[i] >= '0' && msg.data[i] <= '2' &&
-            msg.data[i + 1] >= '0' && msg.data[i + 1] <= '9' &&
-            msg.data[i + 2] >= '0' && msg.data[i + 2] <= '9') {
-          value = (msg.data[i] - '0') * 100 + (msg.data[i + 1] - '0') * 10 +
-                  (msg.data[i + 2] - '0');
-          i += 3;
-        }
-        // Verificar si hay al menos 2 caracteres disponibles para extraer un
-        // número de 2 dígitos
-        else if (i + 1 < msg.len && msg.data[i] >= '0' && msg.data[i] <= '9' &&
-                 msg.data[i + 1] >= '0' && msg.data[i + 1] <= '9') {
-          value = (msg.data[i] - '0') * 10 + (msg.data[i + 1] - '0');
-          i += 2;
-        }
-        // Extraer un solo dígito
-        else {
-          value = msg.data[i] - '0';
-          i += 1;
-        }
-
-        converted_msg[byte_index++] = value;
-      }
-    }
-
-    // Imprimir el resultado para verificar
-    printf("Converted message: [");
-    for (int j = 0; j < byte_index; j++) {
-      printf("%d", converted_msg[j]);
-      if (j < byte_index - 1)
-        printf(", ");
-    }
-    printf("]\n");
-  }
-
   switch (msg.data[0]) {
   case GET_USER:
     if (msg.len < 3) {
@@ -521,7 +428,7 @@ static void ws_on_message(ws_s *ws, fio_str_info_s msg, uint8_t is_text) {
     //   return;
     // }
 
-  //   break;
+    // break;
   case CHANGE_STATUS:
     // Message should contain at least a username length
     if (msg.len < 2) {
@@ -545,16 +452,47 @@ static void ws_on_message(ws_s *ws, fio_str_info_s msg, uint8_t is_text) {
       return;
     }
 
+    UWU_User *old_user =
+        UWU_UserList_findByName(&active_usernames, &req_username);
+    if (NULL == old_user) {
+      UWU_PANIC("Error: No user with the given username found!");
+      return;
+    }
+
     UWU_User new_user = {
         .username = req_username,
         .status = msg.data[2 + username_length],
     };
+
+    if (old_user->status == new_user.status) {
+      fprintf(stderr, "Warning: Can't change status to the same status!");
+      return;
+    }
+
+    UWU_Bool valid_transition =
+        (old_user->status == ACTIVE && new_user.status == BUSY) ||
+        (old_user->status == BUSY && new_user.status == ACTIVE);
+    if (!valid_transition) {
+      fprintf(stderr, "Error: Invalid transition of user state!");
+      return;
+    }
 
     if (!UWU_UserList_updateUserByName(&active_usernames, &req_username,
                                        new_user)) {
       UWU_PANIC("Error: No username to update status found!");
       return;
     }
+
+    int data_length = 2 + req_username.length + 1;
+    char *data = malloc(sizeof(char) * data_length);
+    data[0] = CHANGED_STATUS;
+    data[1] = req_username.length;
+    memcpy(&data[2], req_username.data, req_username.length);
+    data[data_length - 1] = new_user.status;
+
+    fio_str_info_s response = {.data = data, .len = data_length};
+    fio_publish(.channel = GROUP_CHAT_CHANNEL, .message = response);
+    free(data);
     break;
   default:
     fprintf(stderr, "Error: Unrecognized message!\n");

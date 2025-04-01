@@ -1,5 +1,4 @@
 #include "http.h"
-#include "unistd.h"
 #include <stdio.h>
 #include <websockets.h>
 
@@ -7,8 +6,8 @@ void on_open(ws_s *ws) {
   printf("Connected to WebSocket server!\n");
   printf("Sending message...\n");
 
-  char data[] = {3, 6, 'F', 'l', 'a', 'v', 'i', 'o', 1};
-  fio_str_info_s message = {.data = data, .len = 8};
+  char data[] = {3, 6, 'F', 'l', 'a', 'v', 'i', 'o', 2};
+  fio_str_info_s message = {.data = data, .len = 9};
 
   if (-1 == websocket_write(ws, message, 0)) {
     printf("FAILED TO SEND MESSAGE!");
