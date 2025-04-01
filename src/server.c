@@ -215,7 +215,7 @@ void initialize_server_state(UWU_Err err) {
   *group_chat_name = '~';
   UWU_String uwu_name = {.data = group_chat_name, .length = 1};
 
-  group_chat = UWU_ChatHistory_init(MAX_MESSAGES_PER_CHAT * 3, uwu_name, err);
+  group_chat = UWU_ChatHistory_init(255, uwu_name, err);
   if (err != NO_ERROR) {
     return;
   }
