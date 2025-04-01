@@ -152,6 +152,9 @@ fio_str_info_s UWU_TextInput_toFio(UWU_Err err) {
 // ======================================
 // LASTLY this section provides the methods to drow the current state on screen
 
+#define RAYLIB_VECTOR2_TO_CLAY_VECTOR2(vector)                                 \
+  (Clay_Vector2) { .x = vector.x, .y = vector.y }
+
 //   STYLES
 // ----------------------
 const uint32_t FONT_ID_BODY_24 = 0;
@@ -168,14 +171,57 @@ const uint32_t FONT_ID_BODY_16 = 1;
 #define COLOR_BUSY (Clay_Color){66, 66, 212, 255}
 #define COLOR_IDLE (Clay_Color){235, 155, 26, 255}
 
+typedef struct {
+  Clay_Vector2 clickOrigin;
+  Clay_Vector2 positionOrigin;
+  bool mouseDown;
+} ScrollbarData;
+
+ScrollbarData scrollbarData = {0};
+
 //   COMPONENTES
 // ----------------------
 
 //   VIEW
 // ----------------------
 
+Clay_RenderCommandArray CreateLayout(void) {
+  Clay_BeginLayout();
+  CLAY({.id = CLAY_ID("OuterContainer"),
+        .layout = {.sizing = {.width = CLAY_SIZING_GROW(0),
+                              .height = CLAY_SIZING_GROW(0)},
+                   .padding = {16, 16, 16, 16},
+                   .childGap = 16},
+        .backgroundColor = COLOR_DARK_GREEN}) {}
+  return Clay_EndLayout();
+}
+
 void UWU_View(Font *fonts, UWU_User *current_user, UWU_UserList *active_user,
-              UWU_ChatHistory *currentHistory) {}
+              UWU_ChatHistory *currentHistory) {
+  Vector2 mouseWheelDelta = GetMouseWheelMoveV();
+  float mouseWheelX = mouseWheelDelta.x;
+  float mouseWheelY = mouseWheelDelta.y;
+
+  //----------------------------------------------------------------------------------
+  // Handle scroll containers
+  Clay_Vector2 mousePosition =
+      RAYLIB_VECTOR2_TO_CLAY_VECTOR2(GetMousePosition());
+  Clay_SetPointerState(mousePosition,
+                       IsMouseButtonDown(0) && !scrollbarData.mouseDown);
+  Clay_SetLayoutDimensions(
+      (Clay_Dimensions){(float)GetScreenWidth(), (float)GetScreenHeight()});
+  if (!IsMouseButtonDown(0)) {
+    scrollbarData.mouseDown = false;
+  }
+
+  // Generate the auto layout for rendering
+  double currentTime = GetTime();
+  Clay_RenderCommandArray renderCommands = CreateLayout();
+  BeginDrawing();
+  ClearBackground(BLACK);
+  Clay_Raylib_Render(renderCommands, fonts);
+  EndDrawing();
+}
 
 bool reinitializeClay = false;
 
@@ -323,7 +369,44 @@ int main(int argc, char *argv[]) {
     return 1;
   }
 
-  pthread_join(fio_thread, NULL);
+  // Clay Initialization
+  uint64_t totalMemorySize = Clay_MinMemorySize();
+  Clay_Arena clayMemory = Clay_CreateArenaWithCapacityAndMemory(
+      totalMemorySize, malloc(totalMemorySize));
+  Clay_Initialize(
+      clayMemory,
+      (Clay_Dimensions){(float)GetScreenWidth(), (float)GetScreenHeight()},
+      (Clay_ErrorHandler){HandleClayErrors, 0});
+  Clay_Raylib_Initialize(1024, 768, "UWU Chat Client",
+                         FLAG_VSYNC_HINT | FLAG_WINDOW_RESIZABLE |
+                             FLAG_WINDOW_HIGHDPI | FLAG_MSAA_4X_HINT);
+  Font fonts[2];
+  fonts[FONT_ID_BODY_24] =
+      LoadFontEx("./src/resources/Roboto-Regular.ttf", 48, 0, 400);
+  SetTextureFilter(fonts[FONT_ID_BODY_24].texture, TEXTURE_FILTER_BILINEAR);
+  fonts[FONT_ID_BODY_16] =
+      LoadFontEx("./src/resources/Roboto-Regular.ttf", 32, 0, 400);
+  SetTextureFilter(fonts[FONT_ID_BODY_16].texture, TEXTURE_FILTER_BILINEAR);
+  Clay_SetMeasureTextFunction(Raylib_MeasureText, fonts);
+
+  // Main render loop
+  while (!WindowShouldClose()) // Detect window close button or ESC key
+  {
+    if (reinitializeClay) {
+      Clay_SetMaxElementCount(8192);
+      totalMemorySize = Clay_MinMemorySize();
+      clayMemory = Clay_CreateArenaWithCapacityAndMemory(
+          totalMemorySize, malloc(totalMemorySize));
+      Clay_Initialize(
+          clayMemory,
+          (Clay_Dimensions){(float)GetScreenWidth(), (float)GetScreenHeight()},
+          (Clay_ErrorHandler){HandleClayErrors, 0});
+      reinitializeClay = false;
+    }
+    UWU_View(fonts, &UWU_current_user, &active_usernames, UWU_current_chat);
+  }
+
+  // pthread_join(fio_thread, NULL);
   deinitialize_server_state();
   return 0;
 }
