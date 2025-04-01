@@ -523,23 +523,13 @@ static void ws_on_message(ws_s *ws, fio_str_info_s msg, uint8_t is_text) {
 
   //   break;
 
+      char username_length = msg.data[1];
+
       UWU_String user_to_get = {
-        .data = msg.data,
+        .data = &msg.data[2],
         .length = msg.data[1]
       };
 
-      struct UWU_UserListNode *current_node = active_usernames.start;
-
-      // Iteramos por la lista hasta llegar al final (donde el nodo es nulo)
-      while (current_node != NULL && !current_node->is_sentinel) {
-          UWU_User *user = &current_node->data;  // Obtenemos el usuario almacenado en el nodo
-  
-          // Imprimir el nombre de usuario y su estado
-          printf("Username: %.*s, Status: %d\n", (int)user->username.length, user->username.data, user->status);
-  
-          // Avanzamos al siguiente nodo
-          current_node = current_node->next;
-      }
       // Search user
       UWU_User *user = UWU_UserList_findByName(&active_usernames, &user_to_get);
   
@@ -550,7 +540,7 @@ static void ws_on_message(ws_s *ws, fio_str_info_s msg, uint8_t is_text) {
       }
   
       printf("Username: %.*s\n", (int)user->username.length, user->username.data);
-      printf("%d", user->status);
+      printf("%d\n", user->status);
       return;
   }   
   case CHANGE_STATUS:
