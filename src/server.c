@@ -417,7 +417,7 @@ static void ws_on_message(ws_s *ws, fio_str_info_s msg, uint8_t is_text) {
   }
 
   switch (msg.data[0]) {
-  case GET_USER:
+  case GET_USER: {
     if (msg.len < 3) {
       fprintf(stderr, "Error: Message is too short!\n");
       return;
@@ -428,7 +428,25 @@ static void ws_on_message(ws_s *ws, fio_str_info_s msg, uint8_t is_text) {
     //   return;
     // }
 
-    // break;
+    //   break;
+
+    char username_length = msg.data[1];
+
+    UWU_String user_to_get = {.data = &msg.data[2], .length = msg.data[1]};
+
+    // Search user
+    UWU_User *user = UWU_UserList_findByName(&active_usernames, &user_to_get);
+
+    // Veryfies if user exists
+    if (user == NULL) {
+      fprintf(stderr, "Error: User not found.\n");
+      return;
+    }
+
+    printf("Username: %.*s\n", (int)user->username.length, user->username.data);
+    printf("%d\n", user->status);
+    return;
+  }
   case CHANGE_STATUS:
     // Message should contain at least a username length
     if (msg.len < 2) {
