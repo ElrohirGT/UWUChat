@@ -6,8 +6,8 @@ void on_open(ws_s *ws) {
   printf("Connected to WebSocket server!\n");
   printf("Sending message...\n");
 
-  char data[] = {3, 6, 'F', 'l', 'a', 'v', 'i', 'o', 2};
-  fio_str_info_s message = {.data = data, .len = 9};
+  char data[] = {1};
+  fio_str_info_s message = {.data = data, .len = 1};
 
   if (-1 == websocket_write(ws, message, 0)) {
     printf("FAILED TO SEND MESSAGE!");
@@ -15,7 +15,14 @@ void on_open(ws_s *ws) {
 }
 
 void on_message(ws_s *ws, fio_str_info_s msg, uint8_t is_text) {
-  printf("Received: %.*s\n", (int)msg.len, msg.data);
+  printf("Received: [ ");
+  for (int i = 0; i < msg.len; i++) {
+    printf("%c (%d)", msg.data[i], msg.data[i]);
+    if (i + 1 < msg.len) {
+      printf(", ");
+    }
+  }
+  printf(" ]\n");
 }
 
 void on_close(intptr_t uuid, void *udata) {

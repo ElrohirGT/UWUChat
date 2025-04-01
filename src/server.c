@@ -271,11 +271,12 @@ static void *idle_detector(void *p) {
       time_t seconds_diff = difftime(now, current->data.last_action);
       UWU_ConnStatus status = current->data.status;
       if (seconds_diff >= IDLE_SECONDS_LIMIT && status != INACTIVE) {
-        fprintf(stderr, "Info: Updated %.*s as INACTIVE!",
+        fprintf(stderr, "Info: Updated %.*s as INACTIVE!\n",
                 current->data.username.length, current->data.username.data);
         current->data.status = INACTIVE;
         fio_str_info_s msg = create_changed_status_message(&current->data);
         fio_publish(.channel = GROUP_CHAT_CHANNEL, .message = msg);
+        free(msg.data);
       }
     }
 
@@ -528,7 +529,47 @@ static void ws_on_message(ws_s *ws, fio_str_info_s msg, uint8_t is_text) {
     printf("Username: %.*s\n", (int)user->username.length, user->username.data);
     printf("%d\n", user->status);
     return;
-  }
+  } break;
+  case LIST_USERS: {
+    char *data = malloc(2 + (255 + 1) * active_usernames.length);
+    if (NULL == data) {
+      UWU_PANIC("Fatal: Allocation of memory for response failed!");
+      return;
+    }
+
+    data[0] = LISTED_USERS;
+    data[1] = active_usernames.length;
+
+    size_t data_length = 2;
+    for (struct UWU_UserListNode *current = active_usernames.start;
+         current != NULL; current = current->next) {
+
+      if (current->is_sentinel) {
+        continue;
+      }
+
+      if (UWU_String_equal(conn_username, &current->data.username)) {
+        update_last_action(&current->data);
+      }
+
+      size_t username_length = current->data.username.length;
+      data[data_length] = username_length;
+      data_length++;
+
+      memcpy(&data[data_length], current->data.username.data, username_length);
+      data_length += username_length;
+
+      data[data_length] = current->data.status;
+      data_length++;
+    }
+
+    fio_str_info_s response = {.data = data, .len = data_length};
+    if (-1 == websocket_write(ws, response, 0)) {
+      fprintf(stderr, "Error: Failed to send response in websocket! %s:%d",
+              __FILE__, __LINE__);
+      return;
+    }
+  } break;
   case CHANGE_STATUS:
     // Message should contain at least a username length
     if (msg.len < 2) {
