@@ -55,12 +55,15 @@ static UWU_UserList active_usernames;
 // current object.
 // - When set to NULL, no chat history is showed.
 static UWU_ChatHistory *UWU_current_chat;
-
-// The max quantity of messages a chat history can hold...
-const size_t MAX_MESSAGES_PER_CHAT = 100;
-
 // Websocket client
 static ws_s *UWU_ws_client = NULL;
+// Text input, holds the current text that has been wrote by the user.
+static UWU_String UWU_TextInput;
+
+// The max quantity of messages a chat history can hold...
+static const size_t MAX_MESSAGES_PER_CHAT = 100;
+static const size_t MAX_CHARACTERS_INPUT = 254;
+#define BACKSPACE 127 // Ascci code for backspace
 
 // ======================================
 //      UPDATE
@@ -89,21 +92,68 @@ void on_close(intptr_t uuid, void *udata) {
 }
 
 // Send a message to the WebSocket server.
-void send_message(ws_s *ws, const UWU_String *msg) {
+// user must be responsable of building the message.
+void send_message(ws_s *ws, const fio_str_info_s *msg) {
   if (ws != NULL) {
-    // BOILER PLATE CODE: Should be replaced with message building as protocol
-    // specifies.
-    fio_str_info_s message = {.data = msg->data, .len = msg->length};
-    websocket_write(ws, message, 0);
+    websocket_write(ws, *msg, 0);
   } else {
     printf("Cannot send message: WebSocket is not connected.\n");
   }
+}
+
+// UTILS
+// ----------------
+
+// Adds a new character to the end of the Textinput buffer.
+void UWU_TextInput_append(char input) {
+  int len = UWU_TextInput.length;
+  if (len < MAX_CHARACTERS_INPUT) {
+    UWU_TextInput.data[len] = input;
+    UWU_TextInput.length++;
+    UWU_TextInput.data[len + 1] = '\0';
+  }
+}
+
+// Removes the last caracter from the textinput buffer by marking it as a null
+// character.
+void UWU_TextInput_remove_last() {
+  int len = UWU_TextInput.length;
+  if (len > 0) {
+    UWU_TextInput.length--;
+    UWU_TextInput.data[len] = '\0';
+  }
+}
+
+// Clears the text input buffer
+void UWU_TextInput_clear() {
+  UWU_TextInput.length = 0;
+  UWU_TextInput.data[0] = '\0';
+}
+
+// Creates a fio string from the current global textinput
+// The caller owns the result.
+fio_str_info_s UWU_TextInput_toFio(UWU_Err err) {
+  fio_str_info_s str_info = {0};
+  str_info.len = strlen(UWU_TextInput.data);
+  str_info.data = malloc(str_info.len);
+
+  if (str_info.data) {
+    memcpy(str_info.data, UWU_TextInput.data, str_info.len);
+  } else {
+    err = MALLOC_FAILED;
+    return str_info;
+  }
+
+  return str_info;
 }
 
 // ======================================
 //      VIEW
 // ======================================
 // LASTLY this section provides the methods to drow the current state on screen
+
+#define RAYLIB_VECTOR2_TO_CLAY_VECTOR2(vector)                                 \
+  (Clay_Vector2) { .x = vector.x, .y = vector.y }
 
 //   STYLES
 // ----------------------
@@ -121,14 +171,57 @@ const uint32_t FONT_ID_BODY_16 = 1;
 #define COLOR_BUSY (Clay_Color){66, 66, 212, 255}
 #define COLOR_IDLE (Clay_Color){235, 155, 26, 255}
 
+typedef struct {
+  Clay_Vector2 clickOrigin;
+  Clay_Vector2 positionOrigin;
+  bool mouseDown;
+} ScrollbarData;
+
+ScrollbarData scrollbarData = {0};
+
 //   COMPONENTES
 // ----------------------
 
 //   VIEW
 // ----------------------
 
+Clay_RenderCommandArray CreateLayout(void) {
+  Clay_BeginLayout();
+  CLAY({.id = CLAY_ID("OuterContainer"),
+        .layout = {.sizing = {.width = CLAY_SIZING_GROW(0),
+                              .height = CLAY_SIZING_GROW(0)},
+                   .padding = {16, 16, 16, 16},
+                   .childGap = 16},
+        .backgroundColor = COLOR_DARK_GREEN}) {}
+  return Clay_EndLayout();
+}
+
 void UWU_View(Font *fonts, UWU_User *current_user, UWU_UserList *active_user,
-              UWU_ChatHistory *currentHistory) {}
+              UWU_ChatHistory *currentHistory) {
+  Vector2 mouseWheelDelta = GetMouseWheelMoveV();
+  float mouseWheelX = mouseWheelDelta.x;
+  float mouseWheelY = mouseWheelDelta.y;
+
+  //----------------------------------------------------------------------------------
+  // Handle scroll containers
+  Clay_Vector2 mousePosition =
+      RAYLIB_VECTOR2_TO_CLAY_VECTOR2(GetMousePosition());
+  Clay_SetPointerState(mousePosition,
+                       IsMouseButtonDown(0) && !scrollbarData.mouseDown);
+  Clay_SetLayoutDimensions(
+      (Clay_Dimensions){(float)GetScreenWidth(), (float)GetScreenHeight()});
+  if (!IsMouseButtonDown(0)) {
+    scrollbarData.mouseDown = false;
+  }
+
+  // Generate the auto layout for rendering
+  double currentTime = GetTime();
+  Clay_RenderCommandArray renderCommands = CreateLayout();
+  BeginDrawing();
+  ClearBackground(BLACK);
+  Clay_Raylib_Render(renderCommands, fonts);
+  EndDrawing();
+}
 
 bool reinitializeClay = false;
 
@@ -151,9 +244,20 @@ void HandleClayErrors(Clay_ErrorData errorData) {
 
 // Initializes client state...
 void initialize_client_state(UWU_Err err, char *username) {
+  // Current chat initalization
+  UWU_current_chat = NULL;
 
+  UWU_TextInput.data = (char *)malloc(MAX_CHARACTERS_INPUT + 1);
+  if (UWU_TextInput.data == NULL) {
+    err = MALLOC_FAILED;
+    return;
+  }
+  UWU_TextInput.data[0] = '\0';
+  UWU_TextInput.length = 0;
+
+  // Create current user
   size_t name_length = strlen(username) + 1;
-  char *username_data = malloc(sizeof(name_length));
+  char *username_data = malloc(name_length);
   if (NULL == username_data) {
     err = MALLOC_FAILED;
     return;
@@ -165,15 +269,26 @@ void initialize_client_state(UWU_Err err, char *username) {
   UWU_current_user.username = current_username;
   UWU_current_user.status = ACTIVE;
 
-  // Current Users initialization
-  active_usernames = UWU_UserList_init();
+  // Create group chat user entry
+  char *group_chat_name = "~";
+  UWU_String uwu_name = {.data = group_chat_name, .length = 1};
+  UWU_User group_chat = {.username = uwu_name, .status = ACTIVE};
+  struct UWU_UserListNode group_chat_node =
+      UWU_UserListNode_newWithValue(group_chat);
 
-  // Curretn chat initalization
-  UWU_current_chat = NULL;
+  // Initialize current active users list
+  active_usernames = UWU_UserList_init();
+  UWU_UserList_insertEnd(&active_usernames, &group_chat_node, err);
+  if (NO_ERROR != err) {
+    return;
+  }
 }
 
 // Clean client state...
 void deinitialize_server_state() {
+  fprintf(stderr, "Cleaning Text input...\n");
+  UWU_String_freeWithMalloc(&UWU_TextInput);
+
   fprintf(stderr, "Cleaning Current User ...\n");
   UWU_User_free(&UWU_current_user);
 
@@ -181,7 +296,10 @@ void deinitialize_server_state() {
   UWU_UserList_deinit(&active_usernames);
 
   fprintf(stderr, "Cleaning Current Chat...\n");
-  UWU_ChatHistory_deinit(UWU_current_chat);
+  if (UWU_current_chat) {
+    UWU_ChatHistory_deinit(UWU_current_chat);
+    UWU_current_chat = NULL;
+  }
 }
 
 // Secondary Thread executed on background for client websocket handling.
@@ -251,44 +369,44 @@ int main(int argc, char *argv[]) {
     return 1;
   }
 
-  // uint64_t totalMemorySize = Clay_MinMemorySize();
-  // Clay_Arena clayMemory =
-  // Clay_CreateArenaWithCapacityAndMemory(totalMemorySize,
-  // malloc(totalMemorySize)); Clay_Initialize(clayMemory, (Clay_Dimensions) {
-  // (float)GetScreenWidth(), (float)GetScreenHeight() }, (Clay_ErrorHandler) {
-  // HandleClayErrors, 0 }); Clay_Raylib_Initialize(1024, 768, "UWU Chat",
-  // FLAG_VSYNC_HINT | FLAG_WINDOW_RESIZABLE | FLAG_WINDOW_HIGHDPI |
-  // FLAG_MSAA_4X_HINT);
+  // Clay Initialization
+  uint64_t totalMemorySize = Clay_MinMemorySize();
+  Clay_Arena clayMemory = Clay_CreateArenaWithCapacityAndMemory(
+      totalMemorySize, malloc(totalMemorySize));
+  Clay_Initialize(
+      clayMemory,
+      (Clay_Dimensions){(float)GetScreenWidth(), (float)GetScreenHeight()},
+      (Clay_ErrorHandler){HandleClayErrors, 0});
+  Clay_Raylib_Initialize(1024, 768, "UWU Chat Client",
+                         FLAG_VSYNC_HINT | FLAG_WINDOW_RESIZABLE |
+                             FLAG_WINDOW_HIGHDPI | FLAG_MSAA_4X_HINT);
+  Font fonts[2];
+  fonts[FONT_ID_BODY_24] =
+      LoadFontEx("./src/resources/Roboto-Regular.ttf", 48, 0, 400);
+  SetTextureFilter(fonts[FONT_ID_BODY_24].texture, TEXTURE_FILTER_BILINEAR);
+  fonts[FONT_ID_BODY_16] =
+      LoadFontEx("./src/resources/Roboto-Regular.ttf", 32, 0, 400);
+  SetTextureFilter(fonts[FONT_ID_BODY_16].texture, TEXTURE_FILTER_BILINEAR);
+  Clay_SetMeasureTextFunction(Raylib_MeasureText, fonts);
 
-  // Font fonts[2];
-  // fonts[FONT_ID_BODY_24] = LoadFontEx("src/resources/Roboto-Regular.ttf", 48,
-  // 0, 400); SetTextureFilter(fonts[FONT_ID_BODY_24].texture,
-  // TEXTURE_FILTER_BILINEAR);
-  // fonts[FONT_ID_BODY_16] = LoadFontEx("src/resources/Roboto-Regular.ttf", 32,
-  // 0, 400); SetTextureFilter(fonts[FONT_ID_BODY_16].texture,
-  // TEXTURE_FILTER_BILINEAR); Clay_SetMeasureTextFunction(Raylib_MeasureText,
-  // fonts);
+  // Main render loop
+  while (!WindowShouldClose()) // Detect window close button or ESC key
+  {
+    if (reinitializeClay) {
+      Clay_SetMaxElementCount(8192);
+      totalMemorySize = Clay_MinMemorySize();
+      clayMemory = Clay_CreateArenaWithCapacityAndMemory(
+          totalMemorySize, malloc(totalMemorySize));
+      Clay_Initialize(
+          clayMemory,
+          (Clay_Dimensions){(float)GetScreenWidth(), (float)GetScreenHeight()},
+          (Clay_ErrorHandler){HandleClayErrors, 0});
+      reinitializeClay = false;
+    }
+    UWU_View(fonts, &UWU_current_user, &active_usernames, UWU_current_chat);
+  }
 
-  //--------------------------------------------------------------------------------------
-
-  // // Main Render Loop
-  // while (!WindowShouldClose())    // Detect window close button or ESC key
-  // {
-  //     if (reinitializeClay) {
-  //         Clay_SetMaxElementCount(8192);
-  //         totalMemorySize = Clay_MinMemorySize();
-  //         clayMemory = Clay_CreateArenaWithCapacityAndMemory(totalMemorySize,
-  //         malloc(totalMemorySize)); Clay_Initialize(
-  //             clayMemory,
-  //             (Clay_Dimensions) { (float)GetScreenWidth(),
-  //             (float)GetScreenHeight() },
-  //             (Clay_ErrorHandler) { HandleClayErrors, 0 });
-  //         reinitializeClay = false;
-  //     }
-
-  // }
-
-  pthread_join(fio_thread, NULL);
+  // pthread_join(fio_thread, NULL);
   deinitialize_server_state();
   return 0;
 }
