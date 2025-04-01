@@ -117,7 +117,10 @@ fio_str_info_s create_changed_status_message(UWU_User *info) {
 
   data[0] = CHANGED_STATUS;
   data[1] = info->username.length;
-  memcpy(&data[2], &info->username, info->username.length);
+  for (int i = 0; i < info->username.length; i++) {
+    data[2 + i] = UWU_String_charAt(&info->username, i);
+  }
+  // memcpy(&data[2], &info->username.data, info->username.length);
   data[data_length - 1] = info->status;
 
   fio_str_info_s msg = {.len = data_length, .data = data};
