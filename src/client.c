@@ -151,9 +151,11 @@ void HandleClayErrors(Clay_ErrorData errorData) {
 
 // Initializes client state...
 void initialize_client_state(UWU_Err err, char *username) {
+  // Curretn chat initalization
+  UWU_current_chat = NULL;
 
   size_t name_length = strlen(username) + 1;
-  char *username_data = malloc(sizeof(name_length));
+  char *username_data = malloc(name_length);
   if (NULL == username_data) {
     err = MALLOC_FAILED;
     return;
@@ -165,11 +167,19 @@ void initialize_client_state(UWU_Err err, char *username) {
   UWU_current_user.username = current_username;
   UWU_current_user.status = ACTIVE;
 
-  // Current Users initialization
-  active_usernames = UWU_UserList_init();
+  // Create group chat user entry
+  char *group_chat_name = "~";
+  UWU_String uwu_name = {.data = group_chat_name, .length = 1};
+  UWU_User group_chat = {.username = uwu_name, .status = ACTIVE};
+  struct UWU_UserListNode group_chat_node =
+      UWU_UserListNode_newWithValue(group_chat);
 
-  // Curretn chat initalization
-  UWU_current_chat = NULL;
+  // Initialize current active users list
+  active_usernames = UWU_UserList_init();
+  UWU_UserList_insertEnd(&active_usernames, &group_chat_node, err);
+  if (NO_ERROR != err) {
+    return;
+  }
 }
 
 // Clean client state...
@@ -181,7 +191,10 @@ void deinitialize_server_state() {
   UWU_UserList_deinit(&active_usernames);
 
   fprintf(stderr, "Cleaning Current Chat...\n");
-  UWU_ChatHistory_deinit(UWU_current_chat);
+  if (UWU_current_chat) {
+    UWU_ChatHistory_deinit(UWU_current_chat);
+    UWU_current_chat = NULL;
+  }
 }
 
 // Secondary Thread executed on background for client websocket handling.
@@ -250,43 +263,6 @@ int main(int argc, char *argv[]) {
     UWU_PANIC("Failed to create WebSocket thread");
     return 1;
   }
-
-  // uint64_t totalMemorySize = Clay_MinMemorySize();
-  // Clay_Arena clayMemory =
-  // Clay_CreateArenaWithCapacityAndMemory(totalMemorySize,
-  // malloc(totalMemorySize)); Clay_Initialize(clayMemory, (Clay_Dimensions) {
-  // (float)GetScreenWidth(), (float)GetScreenHeight() }, (Clay_ErrorHandler) {
-  // HandleClayErrors, 0 }); Clay_Raylib_Initialize(1024, 768, "UWU Chat",
-  // FLAG_VSYNC_HINT | FLAG_WINDOW_RESIZABLE | FLAG_WINDOW_HIGHDPI |
-  // FLAG_MSAA_4X_HINT);
-
-  // Font fonts[2];
-  // fonts[FONT_ID_BODY_24] = LoadFontEx("src/resources/Roboto-Regular.ttf", 48,
-  // 0, 400); SetTextureFilter(fonts[FONT_ID_BODY_24].texture,
-  // TEXTURE_FILTER_BILINEAR);
-  // fonts[FONT_ID_BODY_16] = LoadFontEx("src/resources/Roboto-Regular.ttf", 32,
-  // 0, 400); SetTextureFilter(fonts[FONT_ID_BODY_16].texture,
-  // TEXTURE_FILTER_BILINEAR); Clay_SetMeasureTextFunction(Raylib_MeasureText,
-  // fonts);
-
-  //--------------------------------------------------------------------------------------
-
-  // // Main Render Loop
-  // while (!WindowShouldClose())    // Detect window close button or ESC key
-  // {
-  //     if (reinitializeClay) {
-  //         Clay_SetMaxElementCount(8192);
-  //         totalMemorySize = Clay_MinMemorySize();
-  //         clayMemory = Clay_CreateArenaWithCapacityAndMemory(totalMemorySize,
-  //         malloc(totalMemorySize)); Clay_Initialize(
-  //             clayMemory,
-  //             (Clay_Dimensions) { (float)GetScreenWidth(),
-  //             (float)GetScreenHeight() },
-  //             (Clay_ErrorHandler) { HandleClayErrors, 0 });
-  //         reinitializeClay = false;
-  //     }
-
-  // }
 
   pthread_join(fio_thread, NULL);
   deinitialize_server_state();
