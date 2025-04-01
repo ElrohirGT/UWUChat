@@ -512,6 +512,55 @@ static void ws_on_message(ws_s *ws, fio_str_info_s msg, uint8_t is_text) {
     fio_publish(.channel = GROUP_CHAT_CHANNEL, .message = response);
     free(data);
     break;
+  case SEND_MESSAGE: {
+    if (msg.len < 2) {
+      fprintf(stderr, "Error: Message is too short!\n");
+      return;
+    }
+
+    char username_length = msg.data[1];
+    char message_length = msg.data[2 + username_length];
+
+    UWU_String rec_username = {.data = &msg.data[2], .length = username_length};
+
+    char rec_username_c[256] = {0};
+    memcpy(rec_username_c, rec_username.data, rec_username.length);
+    rec_username_c[rec_username.length] = '\0';
+
+    UWU_String key;
+    char key_name[256] = "";
+
+    int res = strncmp(conn_username->data, rec_username_c, username_length);
+
+    size_t remaining = sizeof(key_name) - 1;
+
+    printf("Username: %s\n", rec_username.data);
+    printf("Receptor Username: %s\n", rec_username.data);
+
+    if (res > 0) {
+      strncat(key_name, rec_username_c, remaining);
+      remaining = sizeof(key_name) - strlen(key_name) - 1;
+      if (remaining > 0)
+        strncat(key_name, SEPARATOR.data, remaining);
+      remaining = sizeof(key_name) - strlen(key_name) - 1;
+      if (remaining > 0)
+        strncat(key_name, conn_username->data, remaining);
+    } else {
+      strncat(key_name, conn_username->data, remaining);
+      remaining = sizeof(key_name) - strlen(key_name) - 1;
+      if (remaining > 0)
+        strncat(key_name, SEPARATOR.data, remaining);
+      remaining = sizeof(key_name) - strlen(key_name) - 1;
+      if (remaining > 0)
+        strncat(key_name, rec_username_c, remaining);
+    }
+
+    printf("This is the key: %s\n", key_name);
+
+    // UWU_ChatHistory_addMessage();
+    break;
+  }
+
   default:
     fprintf(stderr, "Error: Unrecognized message!\n");
     return;

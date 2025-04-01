@@ -8,6 +8,8 @@ void on_open(ws_s *ws) {
 
   char data[] = {3, 6, 'F', 'l', 'a', 'v', 'i', 'o', 2};
   fio_str_info_s message = {.data = data, .len = 9};
+  char data[] = {2, 6, 'F', 'l', 'a', 'v', 'i', 'o'};
+  fio_str_info_s message = {.data = data, .len = 8};
 
   if (-1 == websocket_write(ws, message, 0)) {
     printf("FAILED TO SEND MESSAGE!");
