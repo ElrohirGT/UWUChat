@@ -154,8 +154,7 @@ void UWU_Update() {
 void BusyBtnHandler(Clay_ElementId elementId, Clay_PointerData pointerInfo,
                     intptr_t userData) {
   if (pointerInfo.state == CLAY_POINTER_DATA_PRESSED_THIS_FRAME) {
-    size_t username_length =
-        UWU_current_user.username.length - 1; // Remove the \0 char at the end!
+    size_t username_length = UWU_current_user.username.length;
     size_t length = 3 + username_length;
     char *data = malloc(length);
 
