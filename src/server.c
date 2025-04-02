@@ -83,12 +83,12 @@ Constants
 
 // The separator used for separating usernames in the hashmap.
 // A username should not include this sequence of characters.
-static UWU_String SEPARATOR = {.data = "&/)", .length = strlen("&/)")};
+UWU_String SEPARATOR = {.data = "&/)", .length = strlen("&/)")};
 
 // The amount of seconds that need to pass in order for a user to become IDLE.
-static time_t IDLE_SECONDS_LIMIT = 5;
+time_t IDLE_SECONDS_LIMIT = 5;
 // The amount of seconds that we wait before checking for IDLE users again.
-static unsigned int IDLE_CHECK_FREQUENCY = 3;
+struct timespec IDLE_CHECK_FREQUENCY = {.tv_sec = 3, .tv_nsec = 0};
 
 /* *****************************************************************************
 Utilities functions
@@ -192,26 +192,32 @@ static fio_str_info_s GROUP_CHAT_CHANNEL = {.data = "~", .len = strlen("~")};
 const size_t MAX_MESSAGES_PER_CHAT = 100;
 
 // Saves all the active usernames...
-static UWU_UserList active_usernames;
+UWU_UserList active_usernames;
 // Saves all the chat active chat histories...
 // Key: The combination of both usernames as a UWU_String.
 // Value: An UWU_History item.
-static struct hashmap_s chats;
+struct hashmap_s chats;
 // Saves all the chat history messages from the Group chat
-static UWU_ChatHistory group_chat;
+UWU_ChatHistory group_chat;
 
 // Flag to alert all pthreads if the server is shutting off or not.
 // ONLY THE MAIN thread should update this value!
-static UWU_Bool is_shutting_off = FALSE;
+UWU_Bool is_shutting_off = FALSE;
 
 // Arena that holds the maximum amount of data a request can have.
 // This allows us to manage requests without having to allocate new memory.
-static UWU_Arena req_arena;
+UWU_Arena req_arena;
 
 // Initializes the server state...
 void initialize_server_state(UWU_Err err) {
   is_shutting_off = FALSE;
-  active_usernames = UWU_UserList_init();
+
+  active_usernames = UWU_UserList_init(err);
+  if (err != NO_ERROR) {
+    return;
+  }
+  fprintf(stderr, "Info: active_usernames initialized in: %p\n",
+          (void *)&active_usernames);
 
   char *group_chat_name = malloc(sizeof(char));
   if (group_chat_name == NULL) {
@@ -280,10 +286,12 @@ static void *idle_detector(void *p) {
     return NULL;
   }
 
-  UWU_UserList *active_usernames = (UWU_UserList *)p;
+  // UWU_UserList *active_usernames = (UWU_UserList *)p;
+  fprintf(stderr, "Info: active_usernames received in: %p\n",
+          (void *)&active_usernames);
   while (!is_shutting_off) {
     fprintf(stderr, "Info: Checking to IDLE %zu active users...\n",
-            active_usernames->length);
+            active_usernames.length);
     time_t now = time(NULL);
 
     if ((clock_t)-1 == now) {
@@ -292,7 +300,7 @@ static void *idle_detector(void *p) {
       return NULL;
     }
 
-    for (struct UWU_UserListNode *current = active_usernames->start;
+    for (struct UWU_UserListNode *current = active_usernames.start;
          current != NULL; current = current->next) {
       if (current->is_sentinel) {
         continue;
@@ -311,7 +319,7 @@ static void *idle_detector(void *p) {
       }
     }
 
-    sleep(IDLE_CHECK_FREQUENCY);
+    nanosleep(&IDLE_CHECK_FREQUENCY, NULL);
   }
 
   UWU_Arena_deinit(&arena);
@@ -458,6 +466,9 @@ static void on_http_upgrade(http_s *h, char *requested_protocol, size_t len) {
   if (user != NULL) {
     fprintf(stderr, "ERROR: Can't connect with an already used username!\n");
     http_send_error(h, 400);
+    UWU_String_freeWithMalloc(uwu_nickname);
+    free(uwu_nickname);
+    return;
   }
 
   /* Test for upgrade protocol (websocket vs. sse) */
@@ -765,7 +776,8 @@ static void ws_on_open(ws_s *ws) {
   websocket_udata_set(ws, user_name);
   if (err != NO_ERROR) {
     char *c_str = UWU_String_toCStr(user_name);
-    UWU_PANIC("Failed to add username `%s` to the UserCollection!", c_str);
+    UWU_PANIC("Fatal: Failed to add username `%s` to the UserCollection!",
+              c_str);
     return;
   }
 
@@ -776,9 +788,12 @@ static void ws_on_open(ws_s *ws) {
   UWU_UserList_insertEnd(&active_usernames, &node, err);
   if (err != NO_ERROR) {
     char *c_str = UWU_String_toCStr(user_name);
-    UWU_PANIC("Failed to add username `%s` to the UserCollection!", c_str);
+    UWU_PANIC("Fatal: Failed to add username `%s` to the UserCollection!",
+              c_str);
     return;
   }
+  fprintf(stderr, "Info: Currently %zu active users!\n",
+          active_usernames.length);
 
   for (struct UWU_UserListNode *current = active_usernames.start;
        current != NULL; current = current->next) {
@@ -799,6 +814,9 @@ static void ws_on_open(ws_s *ws) {
     UWU_String tmp = UWU_String_combineWithOther(first, &SEPARATOR);
     UWU_String combined = UWU_String_combineWithOther(&tmp, other);
     UWU_String_freeWithMalloc(&tmp);
+
+    fprintf(stderr, "Info: Subscribing to %.*s chat!\n", combined.length,
+            combined.data);
 
     // Subscribe to all DM channels...
     fio_str_info_s channel = {.data = combined.data, .len = combined.length};
