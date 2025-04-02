@@ -699,13 +699,13 @@ static void ws_on_message(ws_s *ws, fio_str_info_s msg, uint8_t is_text) {
 
     UWU_String user_name = {.data = &msg.data[2], .length = username_length};
 
-    UWU_String content = {.data = &msg.data[message_length],
+    UWU_String content = {.data = &msg.data[3+username_length],
                           .length = message_length};
 
     if (UWU_String_equal(&user_name, &general_chat_name)) {
       printf("Sending message to general chat...\n");
       UWU_ChatEntry entry = {.content = content,
-                             .origin_username = conn_username};
+                             .origin_username = UWU_GROUP_CHAT_CHANNEL};
       UWU_ChatHistory_addMessage(&group_chat, entry);
 
       fio_str_info_s response = {.data = msg.data, .len = msg.len};
@@ -752,12 +752,14 @@ static void ws_on_message(ws_s *ws, fio_str_info_s msg, uint8_t is_text) {
     UWU_ChatHistory_addMessage(history, entry);
 
     fio_str_info_s response = {.data = msg.data, .len = msg.len};
+		// channel = combinación de conn_username y el req_username
+		// fio_publish(.channel = "Combinación de usernames", .message = response);
     if (-1 == websocket_write(ws, response, 0)) {
       fprintf(stderr, "Error: Failed to send response in websocket! %s:%d",
               __FILE__, __LINE__);
       return;
     }
-    free(response.data);
+    // free(response.data);
   } break;
 
   case GET_MESSAGES: {
