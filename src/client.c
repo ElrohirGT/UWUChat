@@ -112,8 +112,8 @@ fio_str_info_s UWU_TextInput_toFio(UWU_Err err) {
 }
 
 // Converts a UWU_String to a Clay_String, useful, for
-Clay_String UWU_to_ClayString(UWU_String uwu) {
-  return (Clay_String){.length = (int32_t)uwu.length, .chars = uwu.data};
+Clay_String UWU_to_ClayString(UWU_String str) {
+  return (Clay_String){.length = (int32_t)str.length, .chars = str.data};
 }
 
 // ======================================
@@ -226,6 +226,33 @@ ScrollbarData scrollbarData = {0};
 
 //   COMPONENTES
 // ----------------------
+void UserCard(int index, UWU_User *user) {
+  Clay_String a = UWU_to_ClayString(user->username);
+
+  CLAY({.id = CLAY_IDI("user", index),
+        .layout = {.sizing = {.width = CLAY_SIZING_GROW(0),
+                              .height = CLAY_SIZING_FIXED(100)},
+                   .layoutDirection = CLAY_TOP_TO_BOTTOM,
+
+                   .padding = {20, 0, 0, 0},
+                   .childAlignment = {.x = CLAY_ALIGN_X_LEFT,
+                                      .y = CLAY_ALIGN_Y_CENTER}},
+        .backgroundColor = Clay_Hovered() ? COLOR_GREY : COLOR_WHITE}) {
+    CLAY_TEXT(a, CLAY_TEXT_CONFIG({.fontId = FONT_ID_BODY_24,
+                                   .fontSize = 24,
+                                   .textColor = COLOR_BLACK}));
+
+    // Status indicator
+    CLAY({.layout = {.sizing = {.width = CLAY_SIZING_FIXED(20),
+                                .height = CLAY_SIZING_FIXED(20)}},
+          .cornerRadius = {10, 10, 10, 10},
+          .backgroundColor =
+              UWU_current_user.status == ACTIVE
+                  ? COLOR_ACTIVE
+                  : (UWU_current_user.status == BUSY ? COLOR_BUSY
+                                                     : COLOR_IDLE)}) {}
+  }
+}
 
 //   VIEW
 // ----------------------
@@ -300,10 +327,23 @@ Clay_RenderCommandArray CreateLayout(void) {
                     CLAY_TEXT_CONFIG({.fontId = FONT_ID_BODY_24,
                                       .fontSize = 24,
                                       .textColor = COLOR_BLACK}));
+          // Status indicator
           CLAY({.layout = {.sizing = {.width = CLAY_SIZING_FIXED(20),
                                       .height = CLAY_SIZING_FIXED(20)}},
                 .cornerRadius = {10, 10, 10, 10},
-                .backgroundColor = COLOR_ACTIVE}) {}
+                .backgroundColor =
+                    UWU_current_user.status == ACTIVE
+                        ? COLOR_ACTIVE
+                        : (UWU_current_user.status == BUSY ? COLOR_BUSY
+                                                           : COLOR_IDLE)}) {}
+        }
+        int i = 0;
+        for (struct UWU_UserListNode *current = active_usernames.start;
+             current != NULL; current = current->next) {
+          if (current->is_sentinel) {
+            continue;
+          }
+          UserCard(i, &current->data);
         }
       }
       CLAY({.id = CLAY_ID("Main"),
@@ -319,8 +359,11 @@ Clay_RenderCommandArray CreateLayout(void) {
 
           CLAY({.id = CLAY_ID("TextInput"),
                 .layout = {.sizing = {.width = CLAY_SIZING_GROW(0),
-                                      .height = CLAY_SIZING_GROW(0)}},
-                .backgroundColor = COLOR_GREY}) {
+                                      .height = CLAY_SIZING_GROW(0)},
+                           .padding = {16, 16, 0, 4},
+                           .childAlignment = {.y = CLAY_ALIGN_Y_CENTER}},
+                .backgroundColor = COLOR_GREY,
+                .cornerRadius = CLAY_CORNER_RADIUS(3)}) {
             CLAY_TEXT(UWU_to_ClayString(UWU_TextInput),
                       CLAY_TEXT_CONFIG({.fontId = FONT_ID_BODY_24,
                                         .fontSize = 20,
