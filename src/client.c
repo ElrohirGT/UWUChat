@@ -300,10 +300,15 @@ Clay_RenderCommandArray CreateLayout(void) {
                     CLAY_TEXT_CONFIG({.fontId = FONT_ID_BODY_24,
                                       .fontSize = 24,
                                       .textColor = COLOR_BLACK}));
+          // Status indicator
           CLAY({.layout = {.sizing = {.width = CLAY_SIZING_FIXED(20),
                                       .height = CLAY_SIZING_FIXED(20)}},
                 .cornerRadius = {10, 10, 10, 10},
-                .backgroundColor = COLOR_ACTIVE}) {}
+                .backgroundColor =
+                    UWU_current_user.status == ACTIVE
+                        ? COLOR_ACTIVE
+                        : (UWU_current_user.status == BUSY ? COLOR_BUSY
+                                                           : COLOR_IDLE)}) {}
         }
       }
       CLAY({.id = CLAY_ID("Main"),
