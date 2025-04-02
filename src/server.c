@@ -757,6 +757,29 @@ static void ws_on_message(ws_s *ws, fio_str_info_s msg, uint8_t is_text) {
       fio_str_info_s response = {.data = data, .len = data_length};
       fio_publish(.channel = GROUP_CHAT_CHANNEL, .message = response);
       free(data);
+
+      for (struct UWU_UserListNode *current = active_usernames.start;
+           current != NULL; current = current->next) {
+
+        if (current->is_sentinel) {
+          continue;
+        }
+        UWU_String current_username = current->data.username;
+
+        if (UWU_String_equal(&current_username, conn_username)) {
+          update_last_action(&current->data);
+
+          if (current->data.status == INACTIVE) {
+            UWU_Arena arena = UWU_Arena_init(3 + current_username.length, err);
+            current->data.status = ACTIVE;
+            fio_str_info_s response =
+                create_changed_status_message(&arena, &current->data);
+            fio_publish(.channel = GROUP_CHAT_CHANNEL, .message = response);
+            UWU_Arena_deinit(arena);
+          }
+        }
+      }
+
     } else {
 
       UWU_String *first = conn_username;
