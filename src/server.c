@@ -674,6 +674,12 @@ static void ws_on_message(ws_s *ws, fio_str_info_s msg, uint8_t is_text) {
         (old_user->status == BUSY && new_user.status == ACTIVE);
     if (!valid_transition) {
       fprintf(stderr, "Error: Invalid transition of user state!");
+      char err_data[] = {(char)ERROR, (char)INVALID_STATUS};
+      fio_str_info_s err_response = {.data = err_data, .len = 2};
+      if (-1 == websocket_write(ws, err_response, 0)) {
+        UWU_PANIC("Fatal: Failed to send error response!");
+        return;
+      }
       return;
     }
 
