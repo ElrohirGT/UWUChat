@@ -734,99 +734,98 @@ static void ws_on_message(ws_s *ws, fio_str_info_s msg, uint8_t is_text) {
                           .length = message_length};
 
     if (UWU_String_equal(&msg_username, &general_chat_name)) {
-      printf("Sending message to general chat...\n");
+      fprintf(stderr, "Info: Sending message to general chat...\n");
       UWU_ChatEntry entry = {.content = content,
                              .origin_username = UWU_GROUP_CHAT_CHANNEL};
       UWU_ChatHistory_addMessage(&group_chat, entry);
 
-      fio_str_info_s response = {.data = msg.data, .len = msg.len};
+      size_t data_length = 3 + 1 + message_length;
+      char *data = malloc(data_length);
+
+      data[0] = GOT_MESSAGE;
+      data[1] = 1;
+      data[2] = '~';
+      data[3] = message_length;
+      for (size_t i = 0; i < message_length; i++) {
+        data[4 + i] = UWU_String_charAt(&content, i);
+      }
+
+      fio_str_info_s response = {.data = data, .len = data_length};
       fio_publish(.channel = GROUP_CHAT_CHANNEL, .message = response);
-      return;
-    }
+      free(data);
+    } else {
 
-    UWU_String *first = conn_username;
-    UWU_String *other = &msg_username;
+      UWU_String *first = conn_username;
+      UWU_String *other = &msg_username;
 
-    if (!UWU_String_firstGoesFirst(first, other)) {
-      first = &msg_username;
-      other = conn_username;
-    }
-
-    printf("Username: %s\n", first->data);
-    printf("Receptor Username: %s\n", other->data);
-
-    UWU_String tmp = UWU_String_combineWithOther(first, &SEPARATOR);
-    UWU_String combined = UWU_String_combineWithOther(&tmp, other);
-    UWU_String_freeWithMalloc(&tmp);
-
-    UWU_ChatHistory *history =
-        (UWU_ChatHistory *)hashmap_get(&chats, combined.data, combined.length);
-    // 1143e40
-
-    if (history == NULL) {
-      printf("No chat history found for key: %s. Creating new chat history.\n",
-             combined.data);
-      return;
-    }
-
-    UWU_String origin_user = {.data = conn_username->data,
-                              .length = conn_username->length};
-
-    UWU_ChatEntry entry = {.content = content, .origin_username = origin_user};
-
-    printf("This is the key: %s\n", combined.data);
-
-    UWU_ChatHistory_addMessage(history, entry);
-
-    msg.data[0] = GOT_MESSAGE;
-
-    // channel = combinación de conn_username y el req_username
-    for (struct UWU_UserListNode *current = active_usernames.start;
-         current != NULL; current = current->next) {
-
-      if (current->is_sentinel) {
-        continue;
+      if (!UWU_String_firstGoesFirst(first, other)) {
+        first = &msg_username;
+        other = conn_username;
       }
 
-      UWU_String current_username = current->data.username;
+      printf("Username: %s\n", first->data);
+      printf("Receptor Username: %s\n", other->data);
 
-      if (UWU_String_equal(&current_username, conn_username)) {
-        fio_str_info_s response = {.data = msg.data, .len = msg.len};
-        if (-1 == websocket_write(ws, response, 0)) {
-          fprintf(stderr, "Error: Failed to send response in websocket! %s:%d",
-                  __FILE__, __LINE__);
-          return;
-        }
+      UWU_String tmp = UWU_String_combineWithOther(first, &SEPARATOR);
+      UWU_String combined = UWU_String_combineWithOther(&tmp, other);
+      UWU_String_freeWithMalloc(&tmp);
+
+      UWU_ChatHistory *history = (UWU_ChatHistory *)hashmap_get(
+          &chats, combined.data, combined.length);
+
+      if (history == NULL) {
+        UWU_PANIC("Fatal: No chat history found for key: %.*s", combined.length,
+                  combined.data);
+        return;
       }
 
-      if (UWU_String_equal(&current_username, &msg_username)) {
-        size_t data_length = 4 + conn_username->length + message_length;
-        char *data = malloc(data_length);
+      // UWU_String origin_user = {.data = conn_username->data,
+      //                           .length = conn_username->length};
 
-        data[0] = GOT_MESSAGE;
-        data[1] = conn_username->length;
+      UWU_ChatEntry entry = {.content = content,
+                             .origin_username = *conn_username};
 
-        for (size_t i = 0; i < conn_username->length; i++) {
-          data[2 + i] = UWU_String_charAt(conn_username, i);
-        }
+      UWU_ChatHistory_addMessage(history, entry);
 
-        data[2 + conn_username->length] = message_length;
-        for (size_t i = 0; i < message_length; i++) {
-          data[2 + conn_username->length + 1 + i] =
-              UWU_String_charAt(&content, i);
-        }
+      size_t data_length = 4 + conn_username->length + message_length;
+      char *data = malloc(data_length);
 
-        fio_str_info_s response = {.data = data, .len = data_length};
-        if (-1 == websocket_write(current->data.ws, response, 0)) {
-          fprintf(stderr, "Error: Failed to send response in websocket! %s:%d",
-                  __FILE__, __LINE__);
-          free(data);
-          return;
-        }
-        free(data);
+      data[0] = GOT_MESSAGE;
+      data[1] = conn_username->length;
+
+      for (size_t i = 0; i < conn_username->length; i++) {
+        data[2 + i] = UWU_String_charAt(conn_username, i);
       }
+
+      data[2 + conn_username->length] = message_length;
+      for (size_t i = 0; i < message_length; i++) {
+        data[2 + conn_username->length + 1 + i] =
+            UWU_String_charAt(&content, i);
+      }
+
+      // channel = combinación de conn_username y el req_username
+      for (struct UWU_UserListNode *current = active_usernames.start;
+           current != NULL; current = current->next) {
+
+        if (current->is_sentinel) {
+          continue;
+        }
+
+        UWU_String current_username = current->data.username;
+
+        if (UWU_String_equal(&current_username, conn_username) ||
+            UWU_String_equal(&current_username, &msg_username)) {
+          fio_str_info_s response = {.data = data, .len = data_length};
+          if (-1 == websocket_write(current->data.ws, response, 0)) {
+            UWU_PANIC("Error: Failed to send response in websocket! %s:%d",
+                      __FILE__, __LINE__);
+            free(data);
+            return;
+          }
+        }
+      }
+      free(data);
     }
-
   } break;
 
   case GET_MESSAGES: {
