@@ -168,8 +168,8 @@ void BusyBtnHandler(Clay_ElementId elementId, Clay_PointerData pointerInfo,
     data[length - 1] = BUSY;
 
     fio_str_info_s msg = {.data = data, .len = length};
-    websocket_write(UWU_ws_client, msg, 0);
-    printf("CLICK!");
+    int err = websocket_write(UWU_ws_client, msg, 0);
+    free(data);
   }
 }
 
@@ -177,21 +177,52 @@ void BusyBtnHandler(Clay_ElementId elementId, Clay_PointerData pointerInfo,
 void ActiveBtnHandler(Clay_ElementId elementId, Clay_PointerData pointerInfo,
                       intptr_t userData) {
   if (pointerInfo.state == CLAY_POINTER_DATA_PRESSED_THIS_FRAME) {
-    size_t length = 3 + UWU_current_user.username.length;
+    size_t username_length = UWU_current_user.username.length;
+    size_t length = 3 + username_length;
     char *data = malloc(length);
 
     data[0] = CHANGE_STATUS;
-    data[1] = UWU_current_user.username.length;
+    data[1] = username_length;
 
-    for (size_t i = 0; i < UWU_current_user.username.length; i++) {
+    for (size_t i = 0; i < username_length; i++) {
       data[2 + i] = UWU_String_charAt(&UWU_current_user.username, i);
     }
 
     data[length - 1] = ACTIVE;
 
     fio_str_info_s msg = {.data = data, .len = length};
+    int err = websocket_write(UWU_ws_client, msg, 0);
+    free(data);
+  }
+}
+
+// Sends a message asking for the chat history of an specific user
+void ChangeChatHandler(Clay_ElementId elementId, Clay_PointerData pointerInfo,
+                       intptr_t userPointer) {
+
+  if (pointerInfo.state == CLAY_POINTER_DATA_PRESSED_THIS_FRAME) {
+    UWU_User *userValue = (UWU_User *)userPointer;
+    char *tempUser = UWU_String_toCStr(&userValue->username);
+    printf("Change Chat to %s!\n", tempUser);
+    free(tempUser);
+
+    UWU_User *user = (UWU_User *)userPointer;
+    printf("HELLO");
+    size_t length = 2 + user->username.length;
+    char *data = malloc(length);
+    if (data == NULL) {
+      UWU_PANIC("COULD NOT INITIALIZE USER NAME ARRAY");
+    }
+    data[0] = GET_MESSAGES;
+    data[1] = userValue->username.length;
+
+    for (size_t i = 0; i < user->username.length; i++) {
+      data[2 + i] = UWU_String_charAt(&userValue->username, i);
+    }
+
+    fio_str_info_s msg = {.data = data, .len = length};
     websocket_write(UWU_ws_client, msg, 0);
-    printf("CLICK!");
+    free(data);
   }
 }
 
@@ -293,6 +324,7 @@ void UserCard(int index, UWU_User *user) {
                    .childAlignment = {.x = CLAY_ALIGN_X_LEFT,
                                       .y = CLAY_ALIGN_Y_CENTER}},
         .backgroundColor = Clay_Hovered() ? COLOR_GREY : COLOR_WHITE}) {
+    Clay_OnHover(ChangeChatHandler, (intptr_t)user);
     CLAY_TEXT(a, CLAY_TEXT_CONFIG({.fontId = FONT_ID_BODY_24,
                                    .fontSize = 24,
                                    .textColor = COLOR_BLACK}));
@@ -461,6 +493,10 @@ Clay_RenderCommandArray CreateLayout(void) {
                          .layoutDirection = CLAY_TOP_TO_BOTTOM},
               .scroll = {.vertical = true}}) {
           if (UWU_current_chat != NULL) {
+            CLAY_TEXT(UWU_to_ClayString(UWU_current_chat->channel_name),
+                      CLAY_TEXT_CONFIG({.fontId = FONT_ID_BODY_24,
+                                        .fontSize = 20,
+                                        .textColor = COLOR_BLACK}));
             UWU_ChatHistory_Iterator iter =
                 UWU_ChatHistory_iter(UWU_current_chat);
             for (size_t i = iter.start; i < iter.end; i++) {
