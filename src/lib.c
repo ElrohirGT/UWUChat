@@ -531,8 +531,7 @@ UWU_Bool UWU_UserList_updateUserByName(UWU_UserList *list, UWU_String *name,
   return FALSE;
 }
 
-UWU_UserList UWU_UserList_init() {
-  UWU_Err err = NO_ERROR;
+UWU_UserList UWU_UserList_init(UWU_Err err) {
   UWU_String sentinel_name = {
       .data = "<sentinel>",
       .length = strlen("<sentinel>"),

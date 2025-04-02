@@ -456,7 +456,10 @@ void initialize_client_state(UWU_Err err, char *username) {
       UWU_UserListNode_newWithValue(group_chat);
 
   // Initialize current active users list
-  active_usernames = UWU_UserList_init();
+  active_usernames = UWU_UserList_init(err);
+  if (NO_ERROR != err) {
+    return;
+  }
   UWU_UserList_insertEnd(&active_usernames, &group_chat_node, err);
   if (NO_ERROR != err) {
     return;
