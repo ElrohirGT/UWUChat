@@ -1028,8 +1028,17 @@ static void ws_on_shutdown(ws_s *ws) {
 }
 
 static void ws_on_close(intptr_t uuid, void *udata) {
+  UWU_Err err = NO_ERROR;
   UWU_String *user_name = udata;
 
+  UWU_Arena arena = UWU_Arena_init(3 + user_name->length, err);
+  UWU_User user = {
+      .username = *user_name,
+      .status = DISCONNETED,
+  };
+
+  fio_str_info_s change_status = create_changed_status_message(&arena, &user);
+  fio_publish(.channel = GROUP_CHAT_CHANNEL, .message = change_status);
   hashmap_iterate_pairs(&chats, remove_if_matches, user_name);
 
   UWU_UserList_removeByUsernameIfExists(&active_usernames, user_name);
@@ -1037,14 +1046,6 @@ static void ws_on_close(intptr_t uuid, void *udata) {
   // Now we need to free the UWU_String!
   UWU_String_freeWithMalloc(user_name);
   free(user_name);
-
-  /* Let everyone know we left the chat */
-  // fiobj_str_write((FIOBJ)udata, " left the chat.", 15);
-  // fio_publish(.channel = GROUP_CHAT_CHANNEL,
-  //             .message = fiobj_obj2cstr((FIOBJ)udata));
-  // /* free the nickname */
-  // fiobj_free((FIOBJ)udata);
-  // (void)uuid; // we don't use the ID
 }
 
 /* *****************************************************************************
