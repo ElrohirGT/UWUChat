@@ -154,8 +154,22 @@ void UWU_Update() {
 void BusyBtnHandler(Clay_ElementId elementId, Clay_PointerData pointerInfo,
                     intptr_t userData) {
   if (pointerInfo.state == CLAY_POINTER_DATA_PRESSED_THIS_FRAME) {
-    // MESSAGE CALL FOR CHANGING STATUS
-    // websocket_write(ws, *msg, 0);
+    size_t username_length =
+        UWU_current_user.username.length - 1; // Remove the \0 char at the end!
+    size_t length = 3 + username_length;
+    char *data = malloc(length);
+
+    data[0] = CHANGE_STATUS;
+    data[1] = username_length;
+
+    for (size_t i = 0; i < username_length; i++) {
+      data[2 + i] = UWU_String_charAt(&UWU_current_user.username, i);
+    }
+
+    data[length - 1] = BUSY;
+
+    fio_str_info_s msg = {.data = data, .len = length};
+    websocket_write(UWU_ws_client, msg, 0);
     printf("CLICK!");
   }
 }
@@ -164,8 +178,20 @@ void BusyBtnHandler(Clay_ElementId elementId, Clay_PointerData pointerInfo,
 void ActiveBtnHandler(Clay_ElementId elementId, Clay_PointerData pointerInfo,
                       intptr_t userData) {
   if (pointerInfo.state == CLAY_POINTER_DATA_PRESSED_THIS_FRAME) {
-    // MESSAGE CALL FOR CHANGING STATUS
-    // websocket_write(ws, *msg, 0);
+    size_t length = 3 + UWU_current_user.username.length;
+    char *data = malloc(length);
+
+    data[0] = CHANGE_STATUS;
+    data[1] = UWU_current_user.username.length;
+
+    for (size_t i = 0; i < UWU_current_user.username.length; i++) {
+      data[2 + i] = UWU_String_charAt(&UWU_current_user.username, i);
+    }
+
+    data[length - 1] = ACTIVE;
+
+    fio_str_info_s msg = {.data = data, .len = length};
+    websocket_write(UWU_ws_client, msg, 0);
     printf("CLICK!");
   }
 }
@@ -580,8 +606,8 @@ void *UWU_WebsocketClientLoop(void *arg) {
   printf("Final connection URL: %s\n", &url);
 
   // Connect to WebSocket server
-  if (websocket_connect(url, .on_open = on_open, .on_message = on_message,
-                        .on_close = on_close) < 1) {
+  if (-1 == websocket_connect(url, .on_open = on_open, .on_message = on_message,
+                              .on_close = on_close)) {
     UWU_PANIC("Failed to connect to WebSocket server.\n");
     exit(1);
     return NULL;
