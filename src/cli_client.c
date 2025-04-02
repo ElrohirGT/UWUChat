@@ -6,8 +6,8 @@ void on_open(ws_s *ws) {
   printf("Connected to WebSocket server!\n");
   printf("Sending message...\n");
 
-  char data[] = {1};
-  fio_str_info_s message = {.data = data, .len = 1};
+  char data[] = {4, 4, 'J', 'o', 's', 'e', 4, 'h', 'o', 'l', 'a'};
+  fio_str_info_s message = {.data = data, .len = 11};
 
   if (-1 == websocket_write(ws, message, 0)) {
     printf("FAILED TO SEND MESSAGE!");
