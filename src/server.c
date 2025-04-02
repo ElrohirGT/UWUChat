@@ -86,7 +86,7 @@ Constants
 UWU_String SEPARATOR = {.data = "&/)", .length = strlen("&/)")};
 
 // The amount of seconds that need to pass in order for a user to become IDLE.
-time_t IDLE_SECONDS_LIMIT = 5;
+time_t IDLE_SECONDS_LIMIT = 30;
 // The amount of seconds that we wait before checking for IDLE users again.
 struct timespec IDLE_CHECK_FREQUENCY = {.tv_sec = 3, .tv_nsec = 0};
 
@@ -118,7 +118,8 @@ fio_str_info_s create_changed_status_message(UWU_Arena *arena, UWU_User *info) {
   data[0] = CHANGED_STATUS;
   data[1] = info->username.length;
   for (int i = 0; i < info->username.length; i++) {
-    data[2 + i] = UWU_String_charAt(&info->username, i);
+    UWU_String u = info->username;
+    data[2 + i] = UWU_String_charAt(&u, i);
   }
   // memcpy(&data[2], &info->username.data, info->username.length);
   data[data_length - 1] = info->status;
@@ -262,7 +263,7 @@ void deinitialize_server_state() {
   fprintf(stderr, "Cleaning DM Chat histories...\n");
   hashmap_destroy(&chats);
   fprintf(stderr, "Cleaning request arena...\n");
-  UWU_Arena_deinit(&req_arena);
+  UWU_Arena_deinit(req_arena);
 }
 
 /* *****************************************************************************
@@ -298,7 +299,7 @@ static void *idle_detector(void *p) {
 
     if ((clock_t)-1 == now) {
       UWU_PANIC("Fatal: Failed to get current clock time!");
-      UWU_Arena_deinit(&arena);
+      UWU_Arena_deinit(arena);
       return NULL;
     }
 
@@ -324,7 +325,7 @@ static void *idle_detector(void *p) {
     nanosleep(&IDLE_CHECK_FREQUENCY, NULL);
   }
 
-  UWU_Arena_deinit(&arena);
+  UWU_Arena_deinit(arena);
   return NULL;
 }
 
@@ -1004,7 +1005,7 @@ static void ws_on_open(ws_s *ws) {
 
   // Notify other users that a new user has joined!
   size_t data_length = 3 + user.username.length;
-  char *data = malloc(data_length);
+  char data[3 + 255]; // 255 is the max username length!
 
   data[0] = REGISTERED_USER;
   data[1] = user.username.length;

@@ -156,10 +156,10 @@ void UWU_Arena_reset(UWU_Arena *arena) { arena->size = 0; }
 
 // Resets and frees all memory associated with this arena.
 // DO NOT USE an arena that has already been deinited!
-void UWU_Arena_deinit(UWU_Arena *arena) {
-  arena->capacity = 0;
-  arena->size = 0;
-  free(arena->data);
+void UWU_Arena_deinit(UWU_Arena arena) {
+  arena.capacity = 0;
+  arena.size = 0;
+  free(arena.data);
 }
 
 /* *****************************************************************************
