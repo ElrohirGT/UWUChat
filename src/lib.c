@@ -662,6 +662,30 @@ typedef struct {
   UWU_String origin_username;
 } UWU_ChatEntry;
 
+UWU_ChatEntry UWU_ChatEntry_copy(UWU_ChatEntry *src, UWU_Err err) {
+  UWU_ChatEntry def = {};
+
+  UWU_String content_copy = UWU_String_copy(&src->content, err);
+  if (err != NO_ERROR) {
+    return def;
+  }
+  UWU_String username_copy = UWU_String_copy(&src->origin_username, err);
+  if (err != NO_ERROR) {
+    return def;
+  }
+
+  UWU_ChatEntry dest = {
+      .content = content_copy,
+      .origin_username = username_copy,
+  };
+
+  return dest;
+}
+
+void UWU_ChatEntry_free(UWU_ChatEntry *src) {
+  UWU_String_freeWithMalloc(&src->content);
+  UWU_String_freeWithMalloc(&src->origin_username);
+}
 // Represents a message history of a certain chat
 //
 // Messages are stored on the `*messages` buffer. If the buffer is full the
@@ -702,6 +726,9 @@ UWU_ChatHistory UWU_ChatHistory_init(size_t capacity, UWU_String channel_name,
 }
 
 void UWU_ChatHistory_deinit(UWU_ChatHistory *ht) {
+  for (size_t i = 0; i < ht->count; i++) {
+    UWU_ChatEntry_free(&ht->messages[i]);
+  }
   free(ht->messages);
   UWU_String_freeWithMalloc(&ht->channel_name);
 }
@@ -710,10 +737,16 @@ void UWU_ChatHistory_deinit(UWU_ChatHistory *ht) {
 //
 // If the ChatHistory is already full then it wraps around and adds it to the
 // back.
-void UWU_ChatHistory_addMessage(UWU_ChatHistory *hist, UWU_ChatEntry entry) {
-
+void UWU_ChatHistory_addMessage(UWU_ChatHistory *hist, UWU_ChatEntry *entry) {
+  UWU_Err err = NO_ERROR;
   size_t next_idx = hist->next_idx % hist->capacity;
-  hist->messages[next_idx] = entry;
+  UWU_ChatEntry clone = UWU_ChatEntry_copy(entry, err);
+  if (err != NO_ERROR) {
+    UWU_PANIC("Fatal: Failed to copy msg into chat history!");
+    return;
+  }
+
+  hist->messages[next_idx] = clone;
 
   hist->count += 1;
   hist->next_idx += 1;

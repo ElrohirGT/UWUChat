@@ -737,7 +737,7 @@ static void ws_on_message(ws_s *ws, fio_str_info_s msg, uint8_t is_text) {
       fprintf(stderr, "Info: Sending message to general chat...\n");
       UWU_ChatEntry entry = {.content = content,
                              .origin_username = UWU_GROUP_CHAT_CHANNEL};
-      UWU_ChatHistory_addMessage(&group_chat, entry);
+      UWU_ChatHistory_addMessage(&group_chat, &entry);
 
       size_t data_length = 3 + 1 + message_length;
       char *data = malloc(data_length);
@@ -789,7 +789,7 @@ static void ws_on_message(ws_s *ws, fio_str_info_s msg, uint8_t is_text) {
       UWU_ChatEntry entry = {.content = content,
                              .origin_username = *conn_username};
 
-      UWU_ChatHistory_addMessage(history, entry);
+      UWU_ChatHistory_addMessage(history, &entry);
 
       size_t data_length = 4 + conn_username->length + message_length;
       char *data = malloc(data_length);
