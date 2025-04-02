@@ -688,7 +688,7 @@ static void ws_on_message(ws_s *ws, fio_str_info_s msg, uint8_t is_text) {
 
     if (!UWU_String_firstGoesFirst(first, other)) {
       first = &user_name;
-      other = &conn_username;
+      other = conn_username;
     }
 
     printf("Username: %s\n", first->data);
