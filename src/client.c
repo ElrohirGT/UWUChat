@@ -513,7 +513,7 @@ void initialize_client_state(UWU_Err err, char *username) {
   UWU_TextInput.length = 0;
 
   // Create current user
-  size_t name_length = strlen(username) + 1;
+  size_t name_length = strlen(username);
   char *username_data = malloc(name_length);
   if (NULL == username_data) {
     err = MALLOC_FAILED;
@@ -613,7 +613,7 @@ int main(int argc, char *argv[]) {
 
   initialize_client_state(err, username);
   if (err != NO_ERROR) {
-    UWU_PANIC("Unable to initialize server state...");
+    UWU_PANIC("Unable to client state...");
     return 1;
   }
 
