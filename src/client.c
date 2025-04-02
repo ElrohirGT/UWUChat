@@ -99,16 +99,36 @@ void UWU_TextInput_clear() {
 // Creates a fio string from the current global textinput
 // The caller owns the result.
 fio_str_info_s UWU_TextInput_toFio(UWU_Err err) {
-  fio_str_info_s str_info = {0};
-  str_info.len = strlen(UWU_TextInput.data);
-  str_info.data = malloc(str_info.len);
 
-  if (str_info.data) {
-    memcpy(str_info.data, UWU_TextInput.data, str_info.len);
-  } else {
+  fio_str_info_s str_info = {0};
+
+  size_t username_length = UWU_current_user.username.length;
+  size_t message_length = UWU_TextInput.length;
+  size_t length = 4 + username_length + message_length;
+  printf("Total length: %d\n", length);
+  printf("username lenght: %d\n", username_length);
+  printf("message leng: %d\n", message_length);
+  char *data = malloc(length);
+
+  if (data == NULL) {
     err = MALLOC_FAILED;
     return str_info;
   }
+
+  data[0] = SEND_MESSAGE;
+  data[1] = username_length;
+  for (size_t i = 0; i < username_length; i++) {
+    data[2 + i] = UWU_String_charAt(&UWU_current_user.username, i);
+  }
+  // a | a | a a a | a | a
+  // 0 | 1 | 2 3 4 | 5 | 6
+  // 1   2   3 4 5   5 | 7
+  data[2 + username_length] = message_length;
+  for (size_t i = 0; i < message_length; i++) {
+    data[3 + username_length + i] = UWU_String_charAt(&UWU_TextInput, i);
+  }
+  str_info.data = data;
+  str_info.len = length;
 
   return str_info;
 }
