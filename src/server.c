@@ -689,19 +689,18 @@ static void ws_on_message(ws_s *ws, fio_str_info_s msg, uint8_t is_text) {
     UWU_String combined = UWU_String_combineWithOther(&tmp, other);
     UWU_String_freeWithMalloc(&tmp);
 
-    UWU_String combined_key = {.data = combined.data,
-                               .length = combined.length};
+    UWU_ChatHistory *history =
+        (UWU_ChatHistory *)hashmap_get(&chats, combined.data, combined.length);
+    // 1143e40
 
-    UWU_ChatHistory *history = (UWU_ChatHistory *)hashmap_get(
-        &chats, &combined_key, combined_key.length);
-
-    if (!history) {
+    if (history == NULL) {
       printf("No chat history found for key: %s. Creating new chat history.\n",
              combined.data);
+      return;
       // FIXME: DONT HAVE TO CREATE A CHAT HERE
-      history = malloc(sizeof(UWU_ChatHistory));
-      *history = UWU_ChatHistory_init(MAX_MESSAGES_PER_CHAT, combined, NULL);
-      hashmap_put(&chats, combined.data, combined.length, history);
+      // history = malloc(sizeof(UWU_ChatHistory));
+      // *history = UWU_ChatHistory_init(MAX_MESSAGES_PER_CHAT, combined, NULL);
+      // hashmap_put(&chats, combined.data, combined.length, history);
     }
 
     UWU_String content = {.data = &msg.data[message_length],
@@ -714,8 +713,7 @@ static void ws_on_message(ws_s *ws, fio_str_info_s msg, uint8_t is_text) {
     printf("This is the key: %s\n", combined.data);
 
     UWU_ChatHistory_addMessage(history, entry);
-    break;
-  }
+  } break;
 
   default:
     fprintf(stderr, "Error: Unrecognized message!\n");
@@ -792,7 +790,10 @@ static void ws_on_open(ws_s *ws) {
 
     UWU_ChatHistory *ht = malloc(sizeof(UWU_ChatHistory));
     *ht = UWU_ChatHistory_init(MAX_MESSAGES_PER_CHAT, combined, err);
-    hashmap_put(&chats, combined.data, combined.length, ht);
+    if (0 != hashmap_put(&chats, combined.data, combined.length, ht)) {
+      UWU_PANIC("Fatal: Error creating shared chat!");
+      return;
+    }
   }
 
   // Subscribe to group channel
