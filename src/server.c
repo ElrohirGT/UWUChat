@@ -86,7 +86,7 @@ Constants
 UWU_String SEPARATOR = {.data = "&/)", .length = strlen("&/)")};
 
 // The amount of seconds that need to pass in order for a user to become IDLE.
-time_t IDLE_SECONDS_LIMIT = 30;
+time_t IDLE_SECONDS_LIMIT = 5;
 // The amount of seconds that we wait before checking for IDLE users again.
 struct timespec IDLE_CHECK_FREQUENCY = {.tv_sec = 3, .tv_nsec = 0};
 
@@ -822,8 +822,22 @@ static void ws_on_message(ws_s *ws, fio_str_info_s msg, uint8_t is_text) {
 
         UWU_String current_username = current->data.username;
 
+        if (UWU_String_equal(&current_username, conn_username)) {
+          update_last_action(&current->data);
+        }
+
         if (UWU_String_equal(&current_username, conn_username) ||
             UWU_String_equal(&current_username, &msg_username)) {
+
+          if (current->data.status == INACTIVE) {
+            UWU_Arena arena = UWU_Arena_init(3 + current_username.length, err);
+            current->data.status = ACTIVE;
+            fio_str_info_s response =
+                create_changed_status_message(&arena, &current->data);
+            fio_publish(.channel = GROUP_CHAT_CHANNEL, .message = response);
+            UWU_Arena_deinit(arena);
+          }
+
           fio_str_info_s response = {.data = data, .len = data_length};
           if (-1 == websocket_write(current->data.ws, response, 0)) {
             UWU_PANIC("Error: Failed to send response in websocket! %s:%d",
