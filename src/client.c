@@ -65,8 +65,9 @@ static const size_t MAX_MESSAGES_PER_CHAT = 100;
 static const size_t MAX_CHARACTERS_INPUT = 254;
 #define BACKSPACE 127 // Ascci code for backspace
 
+// ===================
 // UTILS
-// ----------------
+// ===================
 
 // Adds a new character to the end of the Textinput buffer.
 void UWU_TextInput_append(char input) {
@@ -111,7 +112,7 @@ fio_str_info_s UWU_TextInput_toFio(UWU_Err err) {
   return str_info;
 }
 
-// Converts a UWU_String to a Clay_String, useful, for
+// Converts a UWU_String to a Clay_String, useful.
 Clay_String UWU_to_ClayString(UWU_String str) {
   return (Clay_String){.length = (int32_t)str.length, .chars = str.data};
 }
@@ -254,6 +255,27 @@ void UserCard(int index, UWU_User *user) {
   }
 }
 
+void ChatMessage(int index, UWU_ChatEntry *entry) {
+  Clay_String username = UWU_to_ClayString(entry->origin_username);
+  Clay_String content = UWU_to_ClayString(entry->content);
+  CLAY({.layout = {.sizing = {.width = CLAY_SIZING_PERCENT(0.5),
+                              .height = CLAY_SIZING_FIT(80)},
+                   .layoutDirection = CLAY_TOP_TO_BOTTOM,
+
+                   .padding = {20, 0, 0, 0},
+                   .childAlignment = {.x = CLAY_ALIGN_X_LEFT,
+                                      .y = CLAY_ALIGN_Y_CENTER}},
+        .cornerRadius = CLAY_CORNER_RADIUS(5),
+        .backgroundColor = COLOR_WHITE}) {
+    CLAY_TEXT(username, CLAY_TEXT_CONFIG({.fontId = FONT_ID_BODY_24,
+                                          .fontSize = 24,
+                                          .textColor = COLOR_BLACK}));
+    CLAY_TEXT(content, CLAY_TEXT_CONFIG({.fontId = FONT_ID_BODY_24,
+                                         .fontSize = 24,
+                                         .textColor = COLOR_BLACK}));
+  }
+}
+
 //   VIEW
 // ----------------------
 
@@ -337,13 +359,18 @@ Clay_RenderCommandArray CreateLayout(void) {
                         : (UWU_current_user.status == BUSY ? COLOR_BUSY
                                                            : COLOR_IDLE)}) {}
         }
-        int i = 0;
-        for (struct UWU_UserListNode *current = active_usernames.start;
-             current != NULL; current = current->next) {
-          if (current->is_sentinel) {
-            continue;
+        CLAY({.layout = {.sizing = {.width = CLAY_SIZING_GROW(0),
+                                    .height = CLAY_SIZING_GROW(0)},
+                         .layoutDirection = CLAY_TOP_TO_BOTTOM},
+              .scroll = {.vertical = true}}) {
+          int i = 0;
+          for (struct UWU_UserListNode *current = active_usernames.start;
+               current != NULL; current = current->next) {
+            if (current->is_sentinel) {
+              continue;
+            }
+            UserCard(i, &current->data);
           }
-          UserCard(i, &current->data);
         }
       }
       CLAY({.id = CLAY_ID("Main"),
@@ -370,6 +397,10 @@ Clay_RenderCommandArray CreateLayout(void) {
                                         .textColor = COLOR_BLACK}));
           }
         }
+        CLAY({.layout = {.sizing = {.width = CLAY_SIZING_GROW(0),
+                                    .height = CLAY_SIZING_GROW(0)},
+                         .layoutDirection = CLAY_TOP_TO_BOTTOM},
+              .scroll = {.vertical = true}}) {}
       }
     }
   }
@@ -393,6 +424,9 @@ void UWU_View(Font *fonts, UWU_User *current_user, UWU_UserList *active_user,
   if (!IsMouseButtonDown(0)) {
     scrollbarData.mouseDown = false;
   }
+
+  Clay_UpdateScrollContainers(true, (Clay_Vector2){mouseWheelX, mouseWheelY},
+                              GetFrameTime());
 
   // Generate the auto layout for rendering
   double currentTime = GetTime();
