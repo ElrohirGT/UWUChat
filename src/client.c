@@ -74,6 +74,22 @@ static const size_t MAX_CHARACTERS_INPUT = 254;
 
 void UWU_Update() {}
 
+void HandleBusyBtn(Clay_ElementId elementId, Clay_PointerData pointerInfo,
+                   intptr_t userData) {
+  if (pointerInfo.state == CLAY_POINTER_DATA_PRESSED_THIS_FRAME) {
+    // MESSAGE CALL FOR CHANGING STATUS
+    printf("CLICK!");
+  }
+}
+
+void HandleActiveBtn(Clay_ElementId elementId, Clay_PointerData pointerInfo,
+                     intptr_t userData) {
+  if (pointerInfo.state == CLAY_POINTER_DATA_PRESSED_THIS_FRAME) {
+    // MESSAGE CALL FOR CHANGING STATUS
+    printf("CLICK!");
+  }
+}
+
 // Callback when WebSocket is opened
 void on_open(ws_s *ws) {
   printf("Connected to WebSocket server!\n");
@@ -147,6 +163,10 @@ fio_str_info_s UWU_TextInput_toFio(UWU_Err err) {
   return str_info;
 }
 
+Clay_String UWU_to_ClayString(UWU_String uwu) {
+  return (Clay_String){.length = (int32_t)uwu.length, .chars = uwu.data};
+}
+
 // ======================================
 //      VIEW
 // ======================================
@@ -164,6 +184,7 @@ const uint32_t FONT_ID_BODY_16 = 1;
 #define COLOR_BLACK (Clay_Color){0, 0, 0, 255}
 #define COLOR_GREY (Clay_Color){224, 224, 224, 255}
 #define COLOR_DARK_GREEN (Clay_Color){7, 94, 84, 255}
+#define COLOR_GREEN (Clay_Color){18, 140, 126, 255}
 #define COLOR_LIGHT_GREEN (Clay_Color){220, 248, 198, 255}
 #define COLOR_BACKGROUND (Clay_Color){236, 229, 221, 255}
 
@@ -190,9 +211,101 @@ Clay_RenderCommandArray CreateLayout(void) {
   CLAY({.id = CLAY_ID("OuterContainer"),
         .layout = {.sizing = {.width = CLAY_SIZING_GROW(0),
                               .height = CLAY_SIZING_GROW(0)},
-                   .padding = {16, 16, 16, 16},
-                   .childGap = 16},
-        .backgroundColor = COLOR_DARK_GREEN}) {}
+                   .padding = {0, 0, 0, 0},
+                   .layoutDirection = CLAY_TOP_TO_BOTTOM},
+        .backgroundColor = COLOR_BLACK}) {
+    CLAY({.id = CLAY_ID("TopBar"),
+          .layout = {.sizing = {.width = CLAY_SIZING_GROW(0),
+                                .height = CLAY_SIZING_FIXED(60)},
+                     .padding = {20, 20, 0, 0},
+                     .childAlignment = {.x = CLAY_ALIGN_X_RIGHT,
+                                        .y = CLAY_ALIGN_Y_CENTER},
+                     .childGap = 16},
+          .backgroundColor = COLOR_DARK_GREEN}) {
+      CLAY({.id = CLAY_ID("ActiveBtn"),
+            .layout = {.sizing = {.width = CLAY_SIZING_FIT(0),
+                                  .height = CLAY_SIZING_PERCENT(0.7)},
+                       .padding = CLAY_PADDING_ALL(3),
+                       .childAlignment = {.x = CLAY_ALIGN_X_CENTER,
+                                          .y = CLAY_ALIGN_Y_CENTER}},
+            .backgroundColor = Clay_Hovered() ? COLOR_IDLE : COLOR_DARK_GREEN,
+            .cornerRadius = CLAY_CORNER_RADIUS(10)}) {
+        Clay_OnHover(HandleActiveBtn, 0);
+        CLAY_TEXT(CLAY_STRING("Active"),
+                  CLAY_TEXT_CONFIG({.fontId = FONT_ID_BODY_24,
+                                    .fontSize = 20,
+                                    .textColor = COLOR_WHITE}));
+      }
+      CLAY({.id = CLAY_ID("BusyBtn"),
+            .layout = {.sizing = {.width = CLAY_SIZING_FIT(0),
+                                  .height = CLAY_SIZING_PERCENT(0.7)},
+                       .padding = CLAY_PADDING_ALL(3),
+                       .childAlignment = {.x = CLAY_ALIGN_X_CENTER,
+                                          .y = CLAY_ALIGN_Y_CENTER}},
+            .backgroundColor = Clay_Hovered() ? COLOR_IDLE : COLOR_DARK_GREEN,
+            .cornerRadius = CLAY_CORNER_RADIUS(10)}) {
+
+        Clay_OnHover(HandleBusyBtn, 0);
+        CLAY_TEXT(CLAY_STRING("Busy"),
+                  CLAY_TEXT_CONFIG({.fontId = FONT_ID_BODY_24,
+                                    .fontSize = 20,
+                                    .textColor = COLOR_WHITE}));
+      }
+    }
+    CLAY({.id = CLAY_ID("Container"),
+          .layout = {.sizing = {.width = CLAY_SIZING_GROW(0),
+                                .height = CLAY_SIZING_GROW(0)}},
+          .backgroundColor = COLOR_BACKGROUND}) {
+      CLAY({
+          .id = CLAY_ID("Sidebar"),
+          .layout = {.sizing = {.width = CLAY_SIZING_PERCENT(0.20),
+                                .height = CLAY_SIZING_GROW(0)},
+                     .layoutDirection = CLAY_TOP_TO_BOTTOM},
+          .backgroundColor = COLOR_WHITE,
+      }) {
+        CLAY({.id = CLAY_ID("CurrentUser"),
+              .layout = {.sizing = {.width = CLAY_SIZING_GROW(0),
+                                    .height = CLAY_SIZING_FIXED(90)},
+                         .layoutDirection = CLAY_TOP_TO_BOTTOM,
+
+                         .padding = {20, 0, 0, 0},
+                         .childAlignment = {.x = CLAY_ALIGN_X_LEFT,
+                                            .y = CLAY_ALIGN_Y_CENTER}},
+              .backgroundColor = COLOR_LIGHT_GREEN}) {
+          CLAY_TEXT(UWU_to_ClayString(UWU_current_user.username),
+                    CLAY_TEXT_CONFIG({.fontId = FONT_ID_BODY_24,
+                                      .fontSize = 24,
+                                      .textColor = COLOR_BLACK}));
+          CLAY({.layout = {.sizing = {.width = CLAY_SIZING_FIXED(20),
+                                      .height = CLAY_SIZING_FIXED(20)}},
+                .cornerRadius = {10, 10, 10, 10},
+                .backgroundColor = COLOR_ACTIVE}) {}
+        }
+      }
+      CLAY({.id = CLAY_ID("Main"),
+            .layout = {.sizing = {.width = CLAY_SIZING_PERCENT(0.80),
+                                  .height = CLAY_SIZING_GROW(0)}}}) {
+        CLAY({.id = CLAY_ID("TextInputContainer"),
+              .layout = {.sizing = {.width = CLAY_SIZING_GROW(0),
+                                    .height = CLAY_SIZING_FIXED(60)},
+                         .padding = {8, 8, 8, 8},
+                         .childAlignment = {.x = CLAY_ALIGN_X_CENTER,
+                                            .y = CLAY_ALIGN_Y_CENTER}},
+              .backgroundColor = COLOR_WHITE}) {
+
+          CLAY({.id = CLAY_ID("TextInput"),
+                .layout = {.sizing = {.width = CLAY_SIZING_GROW(0),
+                                      .height = CLAY_SIZING_GROW(0)}},
+                .backgroundColor = COLOR_GREY}) {
+            CLAY_TEXT(UWU_to_ClayString(UWU_TextInput),
+                      CLAY_TEXT_CONFIG({.fontId = FONT_ID_BODY_24,
+                                        .fontSize = 20,
+                                        .textColor = COLOR_BLACK}));
+          }
+        }
+      }
+    }
+  }
   return Clay_EndLayout();
 }
 
@@ -218,7 +331,6 @@ void UWU_View(Font *fonts, UWU_User *current_user, UWU_UserList *active_user,
   double currentTime = GetTime();
   Clay_RenderCommandArray renderCommands = CreateLayout();
   BeginDrawing();
-  ClearBackground(BLACK);
   Clay_Raylib_Render(renderCommands, fonts);
   EndDrawing();
 }
@@ -377,7 +489,7 @@ int main(int argc, char *argv[]) {
       clayMemory,
       (Clay_Dimensions){(float)GetScreenWidth(), (float)GetScreenHeight()},
       (Clay_ErrorHandler){HandleClayErrors, 0});
-  Clay_Raylib_Initialize(1024, 768, "UWU Chat Client",
+  Clay_Raylib_Initialize(GetScreenWidth(), GetScreenHeight(), "UWU Chat Client",
                          FLAG_VSYNC_HINT | FLAG_WINDOW_RESIZABLE |
                              FLAG_WINDOW_HIGHDPI | FLAG_MSAA_4X_HINT);
   Font fonts[2];
