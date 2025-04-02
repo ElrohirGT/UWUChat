@@ -699,7 +699,7 @@ static void ws_on_message(ws_s *ws, fio_str_info_s msg, uint8_t is_text) {
 
     UWU_String user_name = {.data = &msg.data[2], .length = username_length};
 
-    UWU_String content = {.data = &msg.data[3+username_length],
+    UWU_String content = {.data = &msg.data[3 + username_length],
                           .length = message_length};
 
     if (UWU_String_equal(&user_name, &general_chat_name)) {
@@ -752,8 +752,8 @@ static void ws_on_message(ws_s *ws, fio_str_info_s msg, uint8_t is_text) {
     UWU_ChatHistory_addMessage(history, entry);
 
     fio_str_info_s response = {.data = msg.data, .len = msg.len};
-		// channel = combinación de conn_username y el req_username
-		// fio_publish(.channel = "Combinación de usernames", .message = response);
+    // channel = combinación de conn_username y el req_username
+    // fio_publish(.channel = "Combinación de usernames", .message = response);
     if (-1 == websocket_write(ws, response, 0)) {
       fprintf(stderr, "Error: Failed to send response in websocket! %s:%d",
               __FILE__, __LINE__);
@@ -970,12 +970,21 @@ static void ws_on_open(ws_s *ws) {
   // Subscribe to group channel
   websocket_subscribe(ws, .channel = GROUP_CHAT_CHANNEL);
 
-  // FIXME: Change message!
-  // 3. Notify other clients that this user has recently connected...
-  FIOBJ tmp = fiobj_str_new(user_name->data, user_name->length);
-  fiobj_str_write(tmp, " joind the chat.\n", 17);
-  fio_publish(.channel = GROUP_CHAT_CHANNEL, .message = fiobj_obj2cstr(tmp));
-  fiobj_free(tmp);
+  // Notify other users that a new user has joined!
+  size_t data_length = 3 + user.username.length;
+  char *data = malloc(data_length);
+
+  data[0] = REGISTERED_USER;
+  data[1] = user.username.length;
+
+  for (size_t i = 0; i < user.username.length; i++) {
+    data[2 + i] = UWU_String_getChar(&user.username, i);
+  }
+  data[data_length - 1] = user.status;
+
+  fio_str_info_s recently_joined_response = {.data = data, .len = data_length};
+  fio_publish(.channel = GROUP_CHAT_CHANNEL,
+              .message = recently_joined_response);
 }
 
 static void ws_on_shutdown(ws_s *ws) {
