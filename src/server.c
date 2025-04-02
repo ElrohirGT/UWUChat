@@ -540,30 +540,39 @@ static void ws_on_message(ws_s *ws, fio_str_info_s msg, uint8_t is_text) {
       fprintf(stderr, "Error: Message is too short!\n");
       return;
     }
-    // char username_len = msg.data[1];
-    // if (username_length <= 0) {
-    //   fprintf(stderr, "Error: The username is too short!\n");
-    //   return;
-    // }
-
-    //   break;
 
     char username_length = msg.data[1];
 
-    UWU_String user_to_get = {.data = &msg.data[2], .length = msg.data[1]};
+    UWU_String user_to_get = {.data = &msg.data[2], .length = username_length};
 
-    // Search user
     UWU_User *user = UWU_UserList_findByName(&active_usernames, &user_to_get);
 
-    // Veryfies if user exists
     if (user == NULL) {
       fprintf(stderr, "Error: User not found.\n");
       return;
     }
 
     printf("Username: %.*s\n", (int)user->username.length, user->username.data);
-    printf("%d\n", user->status);
-    return;
+    printf("Status: %d\n", user->status);
+
+    size_t response_size = user->username.length + 1;
+
+    char *data = (char *)malloc(response_size);
+    if (!data) {
+      fprintf(stderr, "Error: Memory allocation failed!\n");
+      return;
+    }
+
+    memcpy(data, user->username.data, user->username.length);
+
+    data[user->username.length] = (char)user->status;
+
+    fio_str_info_s response = {.data = data, .len = response_size};
+    if (-1 == websocket_write(ws, response, 0)) {
+      fprintf(stderr, "Error: Failed to send response in websocket! %s:%d",
+              __FILE__, __LINE__);
+    }
+    free(data);
   } break;
   case LIST_USERS: {
     char *data = UWU_Arena_alloc(&req_arena,
