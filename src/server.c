@@ -167,7 +167,7 @@ typedef struct {
 } UWU_ChatHistoryCollection;
 
 // Global group chat
-static fio_str_info_s GROUP_CHAT_CHANNEL = {.data = "~", .len = strlen("~")};
+static fio_str_info_s GROUP_CHAT_CHANNEL = {.data = "~", .len = 1};
 // Global group chat
 static UWU_String UWU_GROUP_CHAT_CHANNEL = {.data = "~", .length = 1};
 
