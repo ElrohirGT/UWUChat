@@ -580,7 +580,7 @@ static void ws_on_message(ws_s *ws, fio_str_info_s msg, uint8_t is_text) {
       return;
     }
 
-    data[0] = '4';
+    data[0] = GOT_USER;
     memcpy(data + 1, user->username.data, user->username.length);
     data[user->username.length + 1] = (char)user->status;
 
@@ -707,6 +707,26 @@ static void ws_on_message(ws_s *ws, fio_str_info_s msg, uint8_t is_text) {
     char username_length = msg.data[1];
     char message_length = msg.data[2 + username_length];
 
+    // printf("Len: %s\n", msg.len);
+    // printf("Size: %s\n", 3 + username_length);
+
+    // Message is empty
+    if (msg.len < 4 + username_length + message_length) {
+      char error[2];
+      error[0] = ERROR;
+      error[1] = EMPTY_MESSAGE;
+
+      fio_str_info_s response = {.data = error, .len = 2};
+
+      if (-1 == websocket_write(ws, response, 0)) {
+        fprintf(stderr, "Error: Failed to send response in websocket! %s:%d",
+                __FILE__, __LINE__);
+        return;
+      }
+
+      return;
+    }
+
     UWU_String user_name = {.data = &msg.data[2], .length = username_length};
 
     UWU_String content = {.data = &msg.data[3 + username_length],
@@ -761,7 +781,7 @@ static void ws_on_message(ws_s *ws, fio_str_info_s msg, uint8_t is_text) {
 
     UWU_ChatHistory_addMessage(history, entry);
 
-    msg.data[0] = '7';
+    msg.data[0] = GOT_MESSAGE;
 
     fio_str_info_s channel = {.data = combined.data, .len = combined.length};
     fio_str_info_s response = {.data = msg.data, .len = msg.len};
@@ -772,7 +792,6 @@ static void ws_on_message(ws_s *ws, fio_str_info_s msg, uint8_t is_text) {
               __FILE__, __LINE__);
       return;
     }
-    // free(response.data);
   } break;
 
   case GET_MESSAGES: {
