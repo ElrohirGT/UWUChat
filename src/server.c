@@ -678,10 +678,26 @@ static void ws_on_message(ws_s *ws, fio_str_info_s msg, uint8_t is_text) {
       return;
     }
 
+    UWU_String general_chat_name = {.data = "~", .length = 1};
+
     char username_length = msg.data[1];
     char message_length = msg.data[2 + username_length];
 
     UWU_String user_name = {.data = &msg.data[2], .length = username_length};
+
+    UWU_String content = {.data = &msg.data[message_length],
+                          .length = message_length};
+
+    if (UWU_String_equal(&user_name, &general_chat_name)) {
+      printf("Sending message to general chat...\n");
+      UWU_ChatEntry entry = {.content = content,
+                             .origin_username = conn_username};
+      UWU_ChatHistory_addMessage(&group_chat, entry);
+
+      fio_str_info_s response = {.data = msg.data, .len = msg.len};
+      fio_publish(.channel = GROUP_CHAT_CHANNEL, .message = response);
+      return;
+    }
 
     UWU_String *first = conn_username;
     UWU_String *other = &user_name;
@@ -712,8 +728,6 @@ static void ws_on_message(ws_s *ws, fio_str_info_s msg, uint8_t is_text) {
       // hashmap_put(&chats, combined.data, combined.length, history);
     }
 
-    UWU_String content = {.data = &msg.data[message_length],
-                          .length = message_length};
     UWU_String origin_user = {.data = conn_username->data,
                               .length = conn_username->length};
 
@@ -729,6 +743,7 @@ static void ws_on_message(ws_s *ws, fio_str_info_s msg, uint8_t is_text) {
               __FILE__, __LINE__);
       return;
     }
+    free(response.data);
   } break;
 
   default:
