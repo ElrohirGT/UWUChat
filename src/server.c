@@ -741,6 +741,10 @@ static void ws_on_message(ws_s *ws, fio_str_info_s msg, uint8_t is_text) {
 
       size_t data_length = 3 + 1 + message_length;
       char *data = malloc(data_length);
+      if (NULL == data) {
+        UWU_PANIC("Fatal: Failed to allocate memory for GOT_MESSAGE response!");
+        return;
+      }
 
       data[0] = GOT_MESSAGE;
       data[1] = 1;
@@ -789,6 +793,11 @@ static void ws_on_message(ws_s *ws, fio_str_info_s msg, uint8_t is_text) {
 
       size_t data_length = 4 + conn_username->length + message_length;
       char *data = malloc(data_length);
+
+      if (NULL == data) {
+        UWU_PANIC("Fatal: Failed to allocate memory for GOT_MESSAGE response!");
+        return;
+      }
 
       data[0] = GOT_MESSAGE;
       data[1] = conn_username->length;
