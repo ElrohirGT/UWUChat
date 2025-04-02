@@ -345,7 +345,11 @@ int main(int argc, char const *argv[]) {
 
   initialize_server_state(err);
   pthread_t pHandler;
-  pthread_create(&pHandler, NULL, &idle_detector, (void *)&active_usernames);
+  if (0 != pthread_create(&pHandler, NULL, &idle_detector,
+                          (void *)&active_usernames)) {
+    UWU_PANIC("Fatal: Failed to create idle detector thread!");
+    return 1;
+  }
 
   if (err != NO_ERROR) {
     fprintf(stderr,
