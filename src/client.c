@@ -48,6 +48,7 @@
 // Current user being logged.
 static UWU_User UWU_current_user;
 // List of active users the client can send/receive messages from
+static UWU_User UWU_group_chat;
 static UWU_UserList active_usernames;
 // Current chat history. BY DESIGN everytime the user changes its current chat,
 // - The WHOLE chat history is fetched from the server, this is done ONLY ONCE,
@@ -154,6 +155,7 @@ void BusyBtnHandler(Clay_ElementId elementId, Clay_PointerData pointerInfo,
                     intptr_t userData) {
   if (pointerInfo.state == CLAY_POINTER_DATA_PRESSED_THIS_FRAME) {
     // MESSAGE CALL FOR CHANGING STATUS
+    // websocket_write(ws, *msg, 0);
     printf("CLICK!");
   }
 }
@@ -163,6 +165,7 @@ void ActiveBtnHandler(Clay_ElementId elementId, Clay_PointerData pointerInfo,
                       intptr_t userData) {
   if (pointerInfo.state == CLAY_POINTER_DATA_PRESSED_THIS_FRAME) {
     // MESSAGE CALL FOR CHANGING STATUS
+    // websocket_write(ws, *msg, 0);
     printf("CLICK!");
   }
 }
@@ -359,11 +362,13 @@ Clay_RenderCommandArray CreateLayout(void) {
                         : (UWU_current_user.status == BUSY ? COLOR_BUSY
                                                            : COLOR_IDLE)}) {}
         }
+        // CONTACTS LIST
         CLAY({.layout = {.sizing = {.width = CLAY_SIZING_GROW(0),
                                     .height = CLAY_SIZING_GROW(0)},
                          .layoutDirection = CLAY_TOP_TO_BOTTOM},
               .scroll = {.vertical = true}}) {
-          int i = 0;
+          UserCard(0, &UWU_group_chat);
+          int i = 1;
           for (struct UWU_UserListNode *current = active_usernames.start;
                current != NULL; current = current->next) {
             if (current->is_sentinel) {
@@ -375,7 +380,9 @@ Clay_RenderCommandArray CreateLayout(void) {
       }
       CLAY({.id = CLAY_ID("Main"),
             .layout = {.sizing = {.width = CLAY_SIZING_PERCENT(0.80),
-                                  .height = CLAY_SIZING_GROW(0)}}}) {
+                                  .height = CLAY_SIZING_GROW(0)},
+                       .layoutDirection = CLAY_TOP_TO_BOTTOM}}) {
+        // TEXT INPUT
         CLAY({.id = CLAY_ID("TextInputContainer"),
               .layout = {.sizing = {.width = CLAY_SIZING_GROW(0),
                                     .height = CLAY_SIZING_FIXED(60)},
@@ -397,10 +404,21 @@ Clay_RenderCommandArray CreateLayout(void) {
                                         .textColor = COLOR_BLACK}));
           }
         }
+        // CHATS HISTORY
         CLAY({.layout = {.sizing = {.width = CLAY_SIZING_GROW(0),
                                     .height = CLAY_SIZING_GROW(0)},
                          .layoutDirection = CLAY_TOP_TO_BOTTOM},
-              .scroll = {.vertical = true}}) {}
+              .scroll = {.vertical = true}}) {
+          if (UWU_current_chat != NULL) {
+            UWU_ChatHistory_Iterator iter =
+                UWU_ChatHistory_iter(UWU_current_chat);
+            for (size_t i = iter.start; i < iter.end; i++) {
+              UWU_ChatEntry entry = UWU_ChatHistory_get(
+                  UWU_current_chat, i % UWU_current_chat->capacity);
+              ChatMessage(i, &entry);
+            }
+          }
+        }
       }
     }
   }
@@ -485,16 +503,14 @@ void initialize_client_state(UWU_Err err, char *username) {
   // Create group chat user entry
   char *group_chat_name = "~";
   UWU_String uwu_name = {.data = group_chat_name, .length = 1};
-  UWU_User group_chat = {.username = uwu_name, .status = ACTIVE};
-  struct UWU_UserListNode group_chat_node =
-      UWU_UserListNode_newWithValue(group_chat);
+  UWU_group_chat.username = uwu_name;
+  UWU_group_chat.status = ACTIVE;
 
   // Initialize current active users list
   active_usernames = UWU_UserList_init(err);
   if (NO_ERROR != err) {
     return;
   }
-  UWU_UserList_insertEnd(&active_usernames, &group_chat_node, err);
   if (NO_ERROR != err) {
     return;
   }
@@ -510,6 +526,9 @@ void deinitialize_server_state() {
 
   fprintf(stderr, "Cleaning User List...\n");
   UWU_UserList_deinit(&active_usernames);
+
+  fprintf(stderr, "Cleaning User Input...\n");
+  UWU_User_free(&UWU_group_chat);
 
   fprintf(stderr, "Cleaning Current Chat...\n");
   if (UWU_current_chat) {
@@ -539,8 +558,9 @@ void *UWU_WebsocketClientLoop(void *arg) {
 
   // Connect to WebSocket server
   if (websocket_connect(url, .on_open = on_open, .on_message = on_message,
-                        .on_close = on_close) == -1) {
-    printf("Failed to connect to WebSocket server.\n");
+                        .on_close = on_close) < 1) {
+    UWU_PANIC("Failed to connect to WebSocket server.\n");
+    exit(1);
     return NULL;
   }
 
