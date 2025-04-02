@@ -345,7 +345,11 @@ int main(int argc, char const *argv[]) {
 
   initialize_server_state(err);
   pthread_t pHandler;
-  pthread_create(&pHandler, NULL, &idle_detector, (void *)&active_usernames);
+  if (0 != pthread_create(&pHandler, NULL, &idle_detector,
+                          (void *)&active_usernames)) {
+    UWU_PANIC("Fatal: Failed to create idle detector thread!");
+    return 1;
+  }
 
   if (err != NO_ERROR) {
     fprintf(stderr,
@@ -674,6 +678,12 @@ static void ws_on_message(ws_s *ws, fio_str_info_s msg, uint8_t is_text) {
         (old_user->status == BUSY && new_user.status == ACTIVE);
     if (!valid_transition) {
       fprintf(stderr, "Error: Invalid transition of user state!");
+      char err_data[] = {(char)ERROR, (char)INVALID_STATUS};
+      fio_str_info_s err_response = {.data = err_data, .len = 2};
+      if (-1 == websocket_write(ws, err_response, 0)) {
+        UWU_PANIC("Fatal: Failed to send error response!");
+        return;
+      }
       return;
     }
 
@@ -973,12 +983,21 @@ static void ws_on_open(ws_s *ws) {
   // Subscribe to group channel
   websocket_subscribe(ws, .channel = GROUP_CHAT_CHANNEL);
 
-  // FIXME: Change message!
-  // 3. Notify other clients that this user has recently connected...
-  FIOBJ tmp = fiobj_str_new(user_name->data, user_name->length);
-  fiobj_str_write(tmp, " joind the chat.\n", 17);
-  fio_publish(.channel = GROUP_CHAT_CHANNEL, .message = fiobj_obj2cstr(tmp));
-  fiobj_free(tmp);
+  // Notify other users that a new user has joined!
+  size_t data_length = 3 + user.username.length;
+  char *data = malloc(data_length);
+
+  data[0] = REGISTERED_USER;
+  data[1] = user.username.length;
+
+  for (size_t i = 0; i < user.username.length; i++) {
+    data[2 + i] = UWU_String_getChar(&user.username, i);
+  }
+  data[data_length - 1] = user.status;
+
+  fio_str_info_s recently_joined_response = {.data = data, .len = data_length};
+  fio_publish(.channel = GROUP_CHAT_CHANNEL,
+              .message = recently_joined_response);
 }
 
 static void ws_on_shutdown(ws_s *ws) {
