@@ -179,6 +179,31 @@ void on_open(ws_s *ws) {
 // Callback when a message is received
 void on_message(ws_s *ws, fio_str_info_s msg, uint8_t is_text) {
   printf("Received: %.*s\n", (int)msg.len, msg.data);
+  switch (msg.data[0]) {
+  case ERROR: {
+  }
+  case LISTED_USERS: {
+
+  } break;
+  case GOT_USER: {
+
+  } break;
+  case REGISTERED_USER: {
+
+  } break;
+  case CHANGED_STATUS: {
+
+  } break;
+  case GOT_MESSAGE: {
+
+  } break;
+  case GOT_MESSAGES: {
+
+  } break;
+  default:
+    fprintf(stderr, "Error: Unrecognized message!\n");
+    return;
+  }
 }
 
 // Callback when WebSocket is closed
@@ -198,7 +223,8 @@ void send_message(ws_s *ws, const fio_str_info_s *msg) {
 // ======================================
 //      VIEW
 // ======================================
-// LASTLY this section provides the methods to drow the current state on screen
+// LASTLY this section provides the methods to drow the current state on
+// screen
 
 #define RAYLIB_VECTOR2_TO_CLAY_VECTOR2(vector)                                 \
   (Clay_Vector2) { .x = vector.x, .y = vector.y }
