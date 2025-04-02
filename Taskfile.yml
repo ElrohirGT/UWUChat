@@ -7,6 +7,13 @@ tasks:
     silent: true
     desc: "List all tasks available"
 
+  client_debug:
+    deps: [server_build]
+    cmds:
+      - gf2 --args ./zig-out/bin/client Flavio ws://127.0.0.1:8080/
+    silent: true
+    desc: "Compile and debug the client with a GDB UI client"
+
   server_build:
     cmds:
       - zig build
