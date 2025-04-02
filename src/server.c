@@ -722,6 +722,13 @@ static void ws_on_message(ws_s *ws, fio_str_info_s msg, uint8_t is_text) {
     printf("This is the key: %s\n", combined.data);
 
     UWU_ChatHistory_addMessage(history, entry);
+
+    fio_str_info_s response = {.data = msg.data, .len = msg.len};
+    if (-1 == websocket_write(ws, response, 0)) {
+      fprintf(stderr, "Error: Failed to send response in websocket! %s:%d",
+              __FILE__, __LINE__);
+      return;
+    }
   } break;
 
   default:
