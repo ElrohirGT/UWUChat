@@ -308,6 +308,17 @@ char *UWU_String_toCStr(UWU_String *str) {
   return c_str;
 }
 
+// Tries to obtain a char at the specified index.
+// Panics if the index is out of bounds!
+char UWU_String_charAt(UWU_String *str, size_t idx) {
+  if (idx < 0 || idx >= str->length) {
+    UWU_PANIC("Can't access character out of bounds of string!");
+    return 0;
+  }
+
+  return str->data[idx];
+}
+
 // Copies a fiobj into a `UWU_String`.
 //
 // `obj` must be a `FIOBJ_T_STRING`, if not this function panics!

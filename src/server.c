@@ -104,12 +104,12 @@ void update_last_action(UWU_User *info) {
 }
 
 // Creates a status message based on the supplied info user.
-// The calling context becomes the owner of `.data` inside `fio_str_info_s`.
-fio_str_info_s create_changed_status_message(UWU_User *info) {
+fio_str_info_s create_changed_status_message(UWU_Arena *arena, UWU_User *info) {
+  UWU_Err err = NO_ERROR;
   int data_length = 2 + info->username.length + 1;
-  char *data = malloc(sizeof(char) * data_length);
+  char *data = UWU_Arena_alloc(arena, sizeof(char) * data_length, err);
 
-  if (NULL == data) {
+  if (err != NO_ERROR) {
     UWU_PANIC("Fatal: Failed to allocate space for message `changed_status`");
     fio_str_info_s dummy = {};
     return dummy;
@@ -117,7 +117,10 @@ fio_str_info_s create_changed_status_message(UWU_User *info) {
 
   data[0] = CHANGED_STATUS;
   data[1] = info->username.length;
-  memcpy(&data[2], &info->username, info->username.length);
+  for (int i = 0; i < info->username.length; i++) {
+    data[2 + i] = UWU_String_charAt(&info->username, i);
+  }
+  // memcpy(&data[2], &info->username.data, info->username.length);
   data[data_length - 1] = info->status;
 
   fio_str_info_s msg = {.len = data_length, .data = data};
@@ -184,6 +187,8 @@ static fio_str_info_s GROUP_CHAT_CHANNEL = {.data = "~", .len = strlen("~")};
 // const size_t MAX_ACTIVE_USERS = 255;
 
 // The max quantity of messages a chat history can hold...
+// This value CAN'T be higher than 255 since that's the maximum number of
+// messages that can be sent over the wire.
 const size_t MAX_MESSAGES_PER_CHAT = 100;
 
 // Saves all the active usernames...
@@ -199,6 +204,10 @@ static UWU_ChatHistory group_chat;
 // ONLY THE MAIN thread should update this value!
 static UWU_Bool is_shutting_off = FALSE;
 
+// Arena that holds the maximum amount of data a request can have.
+// This allows us to manage requests without having to allocate new memory.
+static UWU_Arena req_arena;
+
 // Initializes the server state...
 void initialize_server_state(UWU_Err err) {
   is_shutting_off = FALSE;
@@ -212,7 +221,7 @@ void initialize_server_state(UWU_Err err) {
   *group_chat_name = '~';
   UWU_String uwu_name = {.data = group_chat_name, .length = 1};
 
-  group_chat = UWU_ChatHistory_init(MAX_MESSAGES_PER_CHAT * 3, uwu_name, err);
+  group_chat = UWU_ChatHistory_init(255, uwu_name, err);
   if (err != NO_ERROR) {
     return;
   }
@@ -222,17 +231,30 @@ void initialize_server_state(UWU_Err err) {
     return;
   }
 
+  // The message that has the maximum size is the response to chat history!
+  /* clang-format off */
+  /* | type (1 byte)  | num msgs (1 byte) | length user (1 byte) | username (max 255 bytes) | length msg (1 bye) | msg (max 255 bytes) |*/
+  /* clang-format on */
+  size_t max_msg_size = 1 + 1 + 255 * (1 + 255 + 1 + 255);
+  req_arena = UWU_Arena_init(max_msg_size, err);
+  if (err != NO_ERROR) {
+    return;
+  }
+
   // TODO: Initialize other server state...
 }
 
 void deinitialize_server_state() {
+  is_shutting_off = TRUE;
+
   fprintf(stderr, "Cleaning User List...\n");
   UWU_UserList_deinit(&active_usernames);
   fprintf(stderr, "Cleaning group Chat history...\n");
   UWU_ChatHistory_deinit(&group_chat);
   fprintf(stderr, "Cleaning DM Chat histories...\n");
   hashmap_destroy(&chats);
-  is_shutting_off = TRUE;
+  fprintf(stderr, "Cleaning request arena...\n");
+  UWU_Arena_deinit(&req_arena);
 }
 
 /* *****************************************************************************
@@ -251,6 +273,13 @@ static void initialize_redis(void);
 
 /* IDLE detector lifecycle function */
 static void *idle_detector(void *p) {
+  UWU_Err err = NO_ERROR;
+  UWU_Arena arena = UWU_Arena_init(2 + 1 + 255, err);
+  if (err != NO_ERROR) {
+    UWU_PANIC("Fatal: Failed to initialize idle_detector arena!");
+    return NULL;
+  }
+
   UWU_UserList *active_usernames = (UWU_UserList *)p;
   while (!is_shutting_off) {
     fprintf(stderr, "Info: Checking to IDLE %zu active users...\n",
@@ -259,6 +288,7 @@ static void *idle_detector(void *p) {
 
     if ((clock_t)-1 == now) {
       UWU_PANIC("Fatal: Failed to get current clock time!");
+      UWU_Arena_deinit(&arena);
       return NULL;
     }
 
@@ -271,17 +301,20 @@ static void *idle_detector(void *p) {
       time_t seconds_diff = difftime(now, current->data.last_action);
       UWU_ConnStatus status = current->data.status;
       if (seconds_diff >= IDLE_SECONDS_LIMIT && status != INACTIVE) {
+        UWU_Arena_reset(&arena);
         fprintf(stderr, "Info: Updated %.*s as INACTIVE!\n",
                 current->data.username.length, current->data.username.data);
         current->data.status = INACTIVE;
-        fio_str_info_s msg = create_changed_status_message(&current->data);
+        fio_str_info_s msg =
+            create_changed_status_message(&arena, &current->data);
         fio_publish(.channel = GROUP_CHAT_CHANNEL, .message = msg);
-        free(msg.data);
       }
     }
 
     sleep(IDLE_CHECK_FREQUENCY);
   }
+
+  UWU_Arena_deinit(&arena);
   return NULL;
 }
 
@@ -485,6 +518,8 @@ WebSockets Callbacks
 ***************************************************************************** */
 
 static void ws_on_message(ws_s *ws, fio_str_info_s msg, uint8_t is_text) {
+  UWU_Err err = NO_ERROR;
+  UWU_Arena_reset(&req_arena);
 
   UWU_String *conn_username = (UWU_String *)websocket_udata_get(ws);
   if (NULL == conn_username) {
@@ -531,8 +566,9 @@ static void ws_on_message(ws_s *ws, fio_str_info_s msg, uint8_t is_text) {
     return;
   } break;
   case LIST_USERS: {
-    char *data = malloc(2 + (255 + 1) * active_usernames.length);
-    if (NULL == data) {
+    char *data = UWU_Arena_alloc(&req_arena,
+                                 2 + (255 + 1) * active_usernames.length, err);
+    if (err != NO_ERROR) {
       UWU_PANIC("Fatal: Allocation of memory for response failed!");
       return;
     }
@@ -622,7 +658,8 @@ static void ws_on_message(ws_s *ws, fio_str_info_s msg, uint8_t is_text) {
     old_user->username = req_username;
     update_last_action(old_user);
 
-    fio_str_info_s response = create_changed_status_message(&new_user);
+    fio_str_info_s response =
+        create_changed_status_message(&req_arena, &new_user);
     fio_publish(.channel = GROUP_CHAT_CHANNEL, .message = response);
     free(response.data);
     break;
