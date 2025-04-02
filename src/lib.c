@@ -1,4 +1,5 @@
 #include "fiobject.h"
+#include "http.h"
 #include <stdarg.h>
 #include <stddef.h>
 #include <stdint.h>
@@ -390,6 +391,9 @@ typedef struct {
   UWU_String username;
   UWU_ConnStatus status;
   time_t last_action;
+  // The Websocket connection associated with this user.
+  // This can be null!
+  ws_s *ws;
 } UWU_User;
 
 UWU_User UWU_User_copyFrom(UWU_User *src, UWU_Err err) {
@@ -404,6 +408,7 @@ UWU_User UWU_User_copyFrom(UWU_User *src, UWU_Err err) {
   copy.username = user_name_copy;
   copy.status = src->status;
   copy.last_action = src->last_action;
+  copy.ws = src->ws;
 
   return copy;
 }

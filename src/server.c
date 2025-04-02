@@ -712,7 +712,7 @@ static void ws_on_message(ws_s *ws, fio_str_info_s msg, uint8_t is_text) {
     // printf("Size: %s\n", 3 + username_length);
 
     // Message is empty
-    if (msg.len < 4 + username_length + message_length) {
+    if (message_length <= 0) {
       char error[2];
       error[0] = ERROR;
       error[1] = EMPTY_MESSAGE;
@@ -728,12 +728,12 @@ static void ws_on_message(ws_s *ws, fio_str_info_s msg, uint8_t is_text) {
       return;
     }
 
-    UWU_String user_name = {.data = &msg.data[2], .length = username_length};
+    UWU_String msg_username = {.data = &msg.data[2], .length = username_length};
 
     UWU_String content = {.data = &msg.data[3 + username_length],
                           .length = message_length};
 
-    if (UWU_String_equal(&user_name, &general_chat_name)) {
+    if (UWU_String_equal(&msg_username, &general_chat_name)) {
       printf("Sending message to general chat...\n");
       UWU_ChatEntry entry = {.content = content,
                              .origin_username = UWU_GROUP_CHAT_CHANNEL};
@@ -745,10 +745,10 @@ static void ws_on_message(ws_s *ws, fio_str_info_s msg, uint8_t is_text) {
     }
 
     UWU_String *first = conn_username;
-    UWU_String *other = &user_name;
+    UWU_String *other = &msg_username;
 
     if (!UWU_String_firstGoesFirst(first, other)) {
-      first = &user_name;
+      first = &msg_username;
       other = conn_username;
     }
 
@@ -767,10 +767,6 @@ static void ws_on_message(ws_s *ws, fio_str_info_s msg, uint8_t is_text) {
       printf("No chat history found for key: %s. Creating new chat history.\n",
              combined.data);
       return;
-      // FIXME: DONT HAVE TO CREATE A CHAT HERE
-      // history = malloc(sizeof(UWU_ChatHistory));
-      // *history = UWU_ChatHistory_init(MAX_MESSAGES_PER_CHAT, combined, NULL);
-      // hashmap_put(&chats, combined.data, combined.length, history);
     }
 
     UWU_String origin_user = {.data = conn_username->data,
@@ -784,15 +780,53 @@ static void ws_on_message(ws_s *ws, fio_str_info_s msg, uint8_t is_text) {
 
     msg.data[0] = GOT_MESSAGE;
 
-    fio_str_info_s channel = {.data = combined.data, .len = combined.length};
-    fio_str_info_s response = {.data = msg.data, .len = msg.len};
     // channel = combinación de conn_username y el req_username
-    fio_publish(.channel = channel, .message = response);
-    if (-1 == websocket_write(ws, response, 0)) {
-      fprintf(stderr, "Error: Failed to send response in websocket! %s:%d",
-              __FILE__, __LINE__);
-      return;
+    for (struct UWU_UserListNode *current = active_usernames.start;
+         current != NULL; current = current->next) {
+
+      if (current->is_sentinel) {
+        continue;
+      }
+
+      UWU_String current_username = current->data.username;
+
+      if (UWU_String_equal(&current_username, conn_username)) {
+        fio_str_info_s response = {.data = msg.data, .len = msg.len};
+        if (-1 == websocket_write(ws, response, 0)) {
+          fprintf(stderr, "Error: Failed to send response in websocket! %s:%d",
+                  __FILE__, __LINE__);
+          return;
+        }
+      }
+
+      if (UWU_String_equal(&current_username, &msg_username)) {
+        size_t data_length = 4 + conn_username->length + message_length;
+        char *data = malloc(data_length);
+
+        data[0] = GOT_MESSAGE;
+        data[1] = conn_username->length;
+
+        for (size_t i = 0; i < conn_username->length; i++) {
+          data[2 + i] = UWU_String_charAt(conn_username, i);
+        }
+
+        data[2 + conn_username->length] = message_length;
+        for (size_t i = 0; i < message_length; i++) {
+          data[2 + conn_username->length + 1 + i] =
+              UWU_String_charAt(&content, i);
+        }
+
+        fio_str_info_s response = {.data = data, .len = data_length};
+        if (-1 == websocket_write(current->data.ws, response, 0)) {
+          fprintf(stderr, "Error: Failed to send response in websocket! %s:%d",
+                  __FILE__, __LINE__);
+          free(data);
+          return;
+        }
+        free(data);
+      }
     }
+
   } break;
 
   case GET_MESSAGES: {
@@ -951,7 +985,7 @@ static void ws_on_open(ws_s *ws) {
     return;
   }
 
-  UWU_User user = {.username = *user_name, .status = ACTIVE};
+  UWU_User user = {.username = *user_name, .status = ACTIVE, .ws = ws};
   update_last_action(&user);
 
   struct UWU_UserListNode node = UWU_UserListNode_newWithValue(user);
@@ -989,8 +1023,12 @@ static void ws_on_open(ws_s *ws) {
             combined.data);
 
     // Subscribe to all DM channels...
-    fio_str_info_s channel = {.data = combined.data, .len = combined.length};
-    websocket_subscribe(ws, .channel = channel);
+    // fio_str_info_s channel = {.data = combined.data, .len = combined.length};
+    // websocket_subscribe(ws, .channel = channel);
+    // // Subscribe older connections to new channel...
+    // if (!UWU_String_equal(&current_username, user_name)) {
+    //   websocket_subscribe(current->data.ws, .channel = channel);
+    // }
 
     UWU_ChatHistory *ht = malloc(sizeof(UWU_ChatHistory));
     *ht = UWU_ChatHistory_init(MAX_MESSAGES_PER_CHAT, combined, err);
