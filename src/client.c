@@ -65,58 +65,6 @@ static const size_t MAX_MESSAGES_PER_CHAT = 100;
 static const size_t MAX_CHARACTERS_INPUT = 254;
 #define BACKSPACE 127 // Ascci code for backspace
 
-// ======================================
-//      UPDATE
-// ======================================
-// In this section manages all functionality related to Model management
-// - websocket callbacks
-// - User input (keystrokes, clicks)
-
-void UWU_Update() {}
-
-void HandleBusyBtn(Clay_ElementId elementId, Clay_PointerData pointerInfo,
-                   intptr_t userData) {
-  if (pointerInfo.state == CLAY_POINTER_DATA_PRESSED_THIS_FRAME) {
-    // MESSAGE CALL FOR CHANGING STATUS
-    printf("CLICK!");
-  }
-}
-
-void HandleActiveBtn(Clay_ElementId elementId, Clay_PointerData pointerInfo,
-                     intptr_t userData) {
-  if (pointerInfo.state == CLAY_POINTER_DATA_PRESSED_THIS_FRAME) {
-    // MESSAGE CALL FOR CHANGING STATUS
-    printf("CLICK!");
-  }
-}
-
-// Callback when WebSocket is opened
-void on_open(ws_s *ws) {
-  printf("Connected to WebSocket server!\n");
-  UWU_ws_client = ws;
-}
-
-// Callback when a message is received
-void on_message(ws_s *ws, fio_str_info_s msg, uint8_t is_text) {
-  printf("Received: %.*s\n", (int)msg.len, msg.data);
-}
-
-// Callback when WebSocket is closed
-void on_close(intptr_t uuid, void *udata) {
-  printf("WebSocket connection closed.\n");
-  UWU_ws_client = NULL;
-}
-
-// Send a message to the WebSocket server.
-// user must be responsable of building the message.
-void send_message(ws_s *ws, const fio_str_info_s *msg) {
-  if (ws != NULL) {
-    websocket_write(ws, *msg, 0);
-  } else {
-    printf("Cannot send message: WebSocket is not connected.\n");
-  }
-}
-
 // UTILS
 // ----------------
 
@@ -163,8 +111,84 @@ fio_str_info_s UWU_TextInput_toFio(UWU_Err err) {
   return str_info;
 }
 
+// Converts a UWU_String to a Clay_String, useful, for
 Clay_String UWU_to_ClayString(UWU_String uwu) {
   return (Clay_String){.length = (int32_t)uwu.length, .chars = uwu.data};
+}
+
+// ======================================
+//      UPDATE
+// ======================================
+// In this section manages all functionality related to Model management
+// - websocket callbacks
+// - UWU_
+// - There are function per
+
+// Send a message to the WebSocket server.
+// user must be responsable of building the message.
+void send_message(ws_s *ws, const fio_str_info_s *msg);
+
+// Manages user input through keystrokes
+void UWU_Update() {
+  int key = GetCharPressed(); // Get character input from keyboard
+
+  // Send a message to the server with the current input data.
+  if (IsKeyPressed(KEY_ENTER)) {
+    UWU_Err err = NO_ERROR;
+    fio_str_info_s message = UWU_TextInput_toFio(err);
+    if (err != NO_ERROR) {
+      UWU_PANIC("Unable to allocate fio string before sending message");
+    }
+    send_message(UWU_ws_client, &message);
+    free(message.data);
+  } else if (IsKeyPressed(KEY_BACKSPACE)) {
+    UWU_TextInput_remove_last();
+  } else if (key > 0) {
+    UWU_TextInput_append(key);
+  }
+}
+
+// Sends a message requesting changing to Busy
+void BusyBtnHandler(Clay_ElementId elementId, Clay_PointerData pointerInfo,
+                    intptr_t userData) {
+  if (pointerInfo.state == CLAY_POINTER_DATA_PRESSED_THIS_FRAME) {
+    // MESSAGE CALL FOR CHANGING STATUS
+    printf("CLICK!");
+  }
+}
+
+// Sends a message requesting changing to Active state
+void ActiveBtnHandler(Clay_ElementId elementId, Clay_PointerData pointerInfo,
+                      intptr_t userData) {
+  if (pointerInfo.state == CLAY_POINTER_DATA_PRESSED_THIS_FRAME) {
+    // MESSAGE CALL FOR CHANGING STATUS
+    printf("CLICK!");
+  }
+}
+
+// Callback when WebSocket is opened
+void on_open(ws_s *ws) {
+  printf("Connected to WebSocket server!\n");
+  UWU_ws_client = ws;
+}
+
+// Callback when a message is received
+void on_message(ws_s *ws, fio_str_info_s msg, uint8_t is_text) {
+  printf("Received: %.*s\n", (int)msg.len, msg.data);
+}
+
+// Callback when WebSocket is closed
+void on_close(intptr_t uuid, void *udata) {
+  printf("WebSocket connection closed.\n");
+  UWU_ws_client = NULL;
+}
+
+void send_message(ws_s *ws, const fio_str_info_s *msg) {
+  if (ws != NULL || msg->len > 0) {
+    websocket_write(ws, *msg, 0);
+  } else {
+    printf("Cannot send message: WebSocket is not connected.\n");
+  }
 }
 
 // ======================================
@@ -230,7 +254,7 @@ Clay_RenderCommandArray CreateLayout(void) {
                                           .y = CLAY_ALIGN_Y_CENTER}},
             .backgroundColor = Clay_Hovered() ? COLOR_IDLE : COLOR_DARK_GREEN,
             .cornerRadius = CLAY_CORNER_RADIUS(10)}) {
-        Clay_OnHover(HandleActiveBtn, 0);
+        Clay_OnHover(ActiveBtnHandler, 0);
         CLAY_TEXT(CLAY_STRING("Active"),
                   CLAY_TEXT_CONFIG({.fontId = FONT_ID_BODY_24,
                                     .fontSize = 20,
@@ -245,7 +269,7 @@ Clay_RenderCommandArray CreateLayout(void) {
             .backgroundColor = Clay_Hovered() ? COLOR_IDLE : COLOR_DARK_GREEN,
             .cornerRadius = CLAY_CORNER_RADIUS(10)}) {
 
-        Clay_OnHover(HandleBusyBtn, 0);
+        Clay_OnHover(BusyBtnHandler, 0);
         CLAY_TEXT(CLAY_STRING("Busy"),
                   CLAY_TEXT_CONFIG({.fontId = FONT_ID_BODY_24,
                                     .fontSize = 20,
@@ -516,6 +540,7 @@ int main(int argc, char *argv[]) {
       reinitializeClay = false;
     }
     UWU_View(fonts, &UWU_current_user, &active_usernames, UWU_current_chat);
+    UWU_Update();
   }
 
   // pthread_join(fio_thread, NULL);
