@@ -1032,6 +1032,11 @@ static void ws_on_close(intptr_t uuid, void *udata) {
   UWU_String *user_name = udata;
 
   UWU_Arena arena = UWU_Arena_init(3 + user_name->length, err);
+  if (err != NO_ERROR) {
+    UWU_PANIC("Fatal: Can't initialize temporary arena for close message!");
+    return;
+  }
+
   UWU_User user = {
       .username = *user_name,
       .status = DISCONNETED,
@@ -1044,6 +1049,7 @@ static void ws_on_close(intptr_t uuid, void *udata) {
   UWU_UserList_removeByUsernameIfExists(&active_usernames, user_name);
 
   // Now we need to free the UWU_String!
+  UWU_Arena_deinit(arena);
   UWU_String_freeWithMalloc(user_name);
   free(user_name);
 }
