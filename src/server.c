@@ -568,7 +568,7 @@ static void ws_on_message(ws_s *ws, fio_str_info_s msg, uint8_t is_text) {
     printf("Username: %.*s\n", (int)user->username.length, user->username.data);
     printf("Status: %d\n", user->status);
 
-    size_t response_size = user->username.length + 1;
+    size_t response_size = user->username.length + 2;
 
     char *data = (char *)malloc(response_size);
     if (!data) {
@@ -576,9 +576,9 @@ static void ws_on_message(ws_s *ws, fio_str_info_s msg, uint8_t is_text) {
       return;
     }
 
-    memcpy(data, user->username.data, user->username.length);
-
-    data[user->username.length] = (char)user->status;
+    data[0] = '4';
+    memcpy(data + 1, user->username.data, user->username.length);
+    data[user->username.length + 1] = (char)user->status;
 
     fio_str_info_s response = {.data = data, .len = response_size};
     if (-1 == websocket_write(ws, response, 0)) {
@@ -699,7 +699,7 @@ static void ws_on_message(ws_s *ws, fio_str_info_s msg, uint8_t is_text) {
 
     UWU_String user_name = {.data = &msg.data[2], .length = username_length};
 
-    UWU_String content = {.data = &msg.data[3+username_length],
+    UWU_String content = {.data = &msg.data[3 + username_length],
                           .length = message_length};
 
     if (UWU_String_equal(&user_name, &general_chat_name)) {
@@ -751,9 +751,12 @@ static void ws_on_message(ws_s *ws, fio_str_info_s msg, uint8_t is_text) {
 
     UWU_ChatHistory_addMessage(history, entry);
 
+    msg.data[0] = '7';
+
+    fio_str_info_s channel = {.data = combined.data, .len = combined.length};
     fio_str_info_s response = {.data = msg.data, .len = msg.len};
-		// channel = combinación de conn_username y el req_username
-		// fio_publish(.channel = "Combinación de usernames", .message = response);
+    // channel = combinación de conn_username y el req_username
+    fio_publish(.channel = channel, .message = response);
     if (-1 == websocket_write(ws, response, 0)) {
       fprintf(stderr, "Error: Failed to send response in websocket! %s:%d",
               __FILE__, __LINE__);
