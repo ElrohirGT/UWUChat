@@ -69,6 +69,16 @@ static const size_t MAX_CHARACTERS_INPUT = 254;
 // ===================
 // UTILS
 // ===================
+void print_msg(fio_str_info_s *msg, char *prefix, char *action) {
+  printf("%s %s: [ ", prefix, action);
+  for (int i = 0; i < msg->len; i++) {
+    printf("%c (%d)", msg->data[i], msg->data[i]);
+    if (i + 1 < msg->len) {
+      printf(", ");
+    }
+  }
+  printf(" ]\n");
+}
 
 // Adds a new character to the end of the Textinput buffer.
 void UWU_TextInput_append(char input) {
@@ -102,7 +112,7 @@ fio_str_info_s UWU_TextInput_toFio(UWU_Err err) {
 
   fio_str_info_s str_info = {0};
 
-  size_t username_length = UWU_current_user.username.length;
+  size_t username_length = UWU_current_chat->channel_name.length;
   size_t message_length = UWU_TextInput.length;
   size_t length = 4 + username_length + message_length;
   printf("Total length: %d\n", length);
@@ -118,7 +128,7 @@ fio_str_info_s UWU_TextInput_toFio(UWU_Err err) {
   data[0] = SEND_MESSAGE;
   data[1] = username_length;
   for (size_t i = 0; i < username_length; i++) {
-    data[2 + i] = UWU_String_charAt(&UWU_current_user.username, i);
+    data[2 + i] = UWU_String_charAt(&UWU_current_chat->channel_name, i);
   }
   // a | a | a a a | a | a
   // 0 | 1 | 2 3 4 | 5 | 6
@@ -163,6 +173,7 @@ void UWU_Update() {
     }
     send_message(UWU_ws_client, &message);
     free(message.data);
+    UWU_TextInput_clear();
   } else if (IsKeyPressed(KEY_BACKSPACE)) {
     UWU_TextInput_remove_last();
   } else if (key > 0) {
@@ -227,7 +238,6 @@ void ChangeChatHandler(Clay_ElementId elementId, Clay_PointerData pointerInfo,
     free(tempUser);
 
     UWU_User *user = (UWU_User *)userPointer;
-    printf("HELLO");
     size_t length = 2 + user->username.length;
     char *data = malloc(length);
     if (data == NULL) {
@@ -254,7 +264,7 @@ void on_open(ws_s *ws) {
 
 // Callback when a message is received
 void on_message(ws_s *ws, fio_str_info_s msg, uint8_t is_text) {
-  printf("Received: %.*s\n", (int)msg.len, msg.data);
+  print_msg(&msg, websocket_udata_get(ws), "Received");
   switch (msg.data[0]) {
   case ERROR: {
   }
