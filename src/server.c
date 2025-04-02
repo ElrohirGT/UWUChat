@@ -167,6 +167,8 @@ typedef struct {
 
 // Global group chat
 static fio_str_info_s GROUP_CHAT_CHANNEL = {.data = "~", .len = strlen("~")};
+// Global group chat
+static UWU_String UWU_GROUP_CHAT_CHANNEL = {.data = "~", .length = 1};
 
 // Si tenemos "n" usuarios conectados entonces tendremos una cantidad de chats
 // igual a:
@@ -626,7 +628,8 @@ static void ws_on_message(ws_s *ws, fio_str_info_s msg, uint8_t is_text) {
       return;
     }
   } break;
-  case CHANGE_STATUS:
+  case CHANGE_STATUS: {
+
     // Message should contain at least a username length
     if (msg.len < 2) {
       fprintf(stderr, "Error: Message is too short!\n");
@@ -682,7 +685,7 @@ static void ws_on_message(ws_s *ws, fio_str_info_s msg, uint8_t is_text) {
         create_changed_status_message(&req_arena, &new_user);
     fio_publish(.channel = GROUP_CHAT_CHANNEL, .message = response);
     free(response.data);
-    break;
+  } break;
   case SEND_MESSAGE: {
     if (msg.len < 2) {
       fprintf(stderr, "Error: Message is too short!\n");
@@ -755,6 +758,123 @@ static void ws_on_message(ws_s *ws, fio_str_info_s msg, uint8_t is_text) {
       return;
     }
     free(response.data);
+  } break;
+
+  case GET_MESSAGES: {
+    if (msg.len < 2) {
+      fprintf(stderr, "Error: Message is too short!\n");
+      return;
+    }
+
+    char username_length = msg.data[1];
+    if (username_length <= 0) {
+      fprintf(stderr, "Error: The username is too short!\n");
+      return;
+    }
+
+    UWU_String req_username = {
+        .data = &msg.data[2],
+        .length = username_length,
+    };
+
+    if (UWU_String_equal(&req_username, &UWU_GROUP_CHAT_CHANNEL)) {
+      size_t max_msg_size = 1 + 1 + 255 * (1 + 255 + 1 + 255);
+      char *data = UWU_Arena_alloc(&req_arena, max_msg_size, err);
+      if (err != NO_ERROR) {
+        UWU_PANIC("Fatal: Arena couldn't allocate enough memory for message!");
+        return;
+      }
+
+      data[0] = GOT_MESSAGES;
+      data[1] = group_chat.count;
+      size_t data_length = 2;
+
+      UWU_ChatHistory_Iterator iter = UWU_ChatHistory_iter(&group_chat);
+      for (size_t i = iter.start; i < iter.end; i++) {
+        UWU_ChatEntry entry =
+            UWU_ChatHistory_get(&group_chat, i % group_chat.capacity);
+
+        data[data_length] = entry.origin_username.length;
+        data_length++;
+
+        for (size_t j = 0; j < entry.origin_username.length; j++) {
+          data[data_length] = UWU_String_getChar(&entry.origin_username, j);
+          data_length++;
+        }
+
+        data[data_length] = entry.content.length;
+        data_length++;
+
+        for (size_t j = 0; j < entry.content.length; j++) {
+          data[data_length] = UWU_String_getChar(&entry.content, j);
+          data_length++;
+        }
+      }
+
+      fio_str_info_s response = {.data = data, .len = data_length};
+      if (-1 == websocket_write(ws, response, 0)) {
+        fprintf(stderr, "Error: Failed to send response in websocket! %s:%d",
+                __FILE__, __LINE__);
+      }
+    } else {
+      UWU_String *first = &req_username;
+      UWU_String *other = conn_username;
+
+      if (!UWU_String_firstGoesFirst(first, other)) {
+        first = conn_username;
+        other = &req_username;
+      }
+
+      UWU_String tmp = UWU_String_combineWithOther(first, &SEPARATOR);
+      UWU_String combined = UWU_String_combineWithOther(&tmp, other);
+      UWU_String_freeWithMalloc(&tmp);
+
+      UWU_ChatHistory *chat =
+          hashmap_get(&chats, combined.data, combined.length);
+      if (NULL == chat) {
+        UWU_PANIC("Fatal: Can't obtain chat!");
+        return;
+      }
+
+      size_t max_msg_size = 1 + 1 + 255 * (1 + 255 + 1 + 255);
+      char *data = UWU_Arena_alloc(&req_arena, max_msg_size, err);
+      if (err != NO_ERROR) {
+        UWU_PANIC("Fatal: Arena couldn't allocate enough memory for message!");
+        return;
+      }
+
+      data[0] = GOT_MESSAGES;
+      data[1] = chat->count;
+      size_t data_length = 2;
+
+      UWU_ChatHistory_Iterator iter = UWU_ChatHistory_iter(chat);
+      for (size_t i = iter.start; i < iter.end; i++) {
+        UWU_ChatEntry entry = UWU_ChatHistory_get(chat, i % chat->capacity);
+
+        data[data_length] = entry.origin_username.length;
+        data_length++;
+
+        for (size_t j = 0; j < entry.origin_username.length; j++) {
+          data[data_length] = UWU_String_getChar(&entry.origin_username, j);
+          data_length++;
+        }
+
+        data[data_length] = entry.content.length;
+        data_length++;
+
+        for (size_t j = 0; j < entry.content.length; j++) {
+          data[data_length] = UWU_String_getChar(&entry.content, j);
+          data_length++;
+        }
+      }
+
+      fio_str_info_s response = {.data = data, .len = data_length};
+      if (-1 == websocket_write(ws, response, 0)) {
+        fprintf(stderr, "Error: Failed to send response in websocket! %s:%d",
+                __FILE__, __LINE__);
+      }
+    }
+
   } break;
 
   default:
