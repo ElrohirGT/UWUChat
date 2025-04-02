@@ -553,9 +553,6 @@ void deinitialize_server_state() {
   fprintf(stderr, "Cleaning User List...\n");
   UWU_UserList_deinit(&active_usernames);
 
-  fprintf(stderr, "Cleaning User Input...\n");
-  UWU_User_free(&UWU_group_chat);
-
   fprintf(stderr, "Cleaning Current Chat...\n");
   if (UWU_current_chat) {
     UWU_ChatHistory_deinit(UWU_current_chat);
@@ -670,6 +667,7 @@ int main(int argc, char *argv[]) {
   }
 
   // pthread_join(fio_thread, NULL);
+  websocket_close(UWU_ws_client);
   deinitialize_server_state();
   return 0;
 }
