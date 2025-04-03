@@ -670,15 +670,23 @@ static void ws_on_message(ws_s *ws, fio_str_info_s msg, uint8_t is_text) {
     };
 
     if (old_user->status == new_user.status) {
-      fprintf(stderr, "Warning: Can't change status to the same status!");
+      fprintf(stderr, "Warning: Can't change status to the same status!\n");
       return;
     }
 
+    UWU_Bool transition_matrix[4][4] = {};
+    transition_matrix[DISCONNETED][DISCONNETED] = TRUE;
+
+    transition_matrix[ACTIVE][BUSY] = TRUE;
+    transition_matrix[BUSY][ACTIVE] = TRUE;
+
+    transition_matrix[INACTIVE][ACTIVE] = TRUE;
+    transition_matrix[INACTIVE][BUSY] = TRUE;
+
     UWU_Bool valid_transition =
-        (old_user->status == ACTIVE && new_user.status == BUSY) ||
-        (old_user->status == BUSY && new_user.status == ACTIVE);
+        transition_matrix[old_user->status][new_user.status];
     if (!valid_transition) {
-      fprintf(stderr, "Error: Invalid transition of user state!");
+      fprintf(stderr, "Error: Invalid transition of user state!\n");
       char err_data[] = {(char)ERROR, (char)INVALID_STATUS};
       fio_str_info_s err_response = {.data = err_data, .len = 2};
       if (-1 == websocket_write(ws, err_response, 0)) {
@@ -687,6 +695,8 @@ static void ws_on_message(ws_s *ws, fio_str_info_s msg, uint8_t is_text) {
       }
       return;
     }
+    fprintf(stderr, "Info: Changing status %.*s to %d",
+            new_user.username.length, new_user.username.data, new_user.status);
 
     old_user->status = new_user.status;
     old_user->username = req_username;

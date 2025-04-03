@@ -267,7 +267,8 @@ void on_message(ws_s *ws, fio_str_info_s msg, uint8_t is_text) {
   print_msg(&msg, websocket_udata_get(ws), "Received");
   switch (msg.data[0]) {
   case ERROR: {
-  }
+    fprintf(stderr, "Error: An error has ocurred! %d", msg.data[1]);
+  } break;
   case LISTED_USERS: {
 
   } break;
@@ -278,6 +279,23 @@ void on_message(ws_s *ws, fio_str_info_s msg, uint8_t is_text) {
 
   } break;
   case CHANGED_STATUS: {
+    size_t username_length = msg.data[1];
+    UWU_ConnStatus req_status = msg.data[2 + username_length];
+    UWU_String req_username = {.data = &msg.data[2], .length = username_length};
+
+    if (UWU_String_equal(&UWU_current_user.username, &req_username)) {
+      UWU_current_user.status = req_status;
+    } else {
+      for (struct UWU_UserListNode *current = active_usernames.start;
+           current != NULL; current = current->next) {
+        if (current->is_sentinel) {
+          continue;
+        }
+        if (UWU_String_equal(&current->data.username, &req_username)) {
+          current->data.status = req_status;
+        }
+      }
+    }
 
   } break;
   case GOT_MESSAGE: {
@@ -288,7 +306,6 @@ void on_message(ws_s *ws, fio_str_info_s msg, uint8_t is_text) {
   } break;
   default:
     fprintf(stderr, "Error: Unrecognized message!\n");
-    return;
   }
 }
 
