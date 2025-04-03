@@ -1,8 +1,8 @@
 # UwuChat
 
-<h3 style="color: red">
+<h2 style="text-align: center">
 Please read the instructions carefully!
-</h3>
+</h2>
 
 ## Cloning this repository
 
