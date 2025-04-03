@@ -286,13 +286,28 @@ void on_message(ws_s *ws, fio_str_info_s msg, uint8_t is_text) {
     if (UWU_String_equal(&UWU_current_user.username, &req_username)) {
       UWU_current_user.status = req_status;
     } else {
+      UWU_Bool found_it = FALSE;
       for (struct UWU_UserListNode *current = active_usernames.start;
            current != NULL; current = current->next) {
         if (current->is_sentinel) {
           continue;
         }
+
         if (UWU_String_equal(&current->data.username, &req_username)) {
+          found_it = TRUE;
           current->data.status = req_status;
+        }
+      }
+
+      if (!found_it) {
+        UWU_Err err = NO_ERROR;
+        UWU_User user = {.username = req_username, .status = req_status};
+        struct UWU_UserListNode node = UWU_UserListNode_newWithValue(user);
+
+        UWU_UserList_insertEnd(&active_usernames, &node, err);
+        if (err != NO_ERROR) {
+          UWU_PANIC("Fatal: Couldn't add username to active usernames!");
+          return;
         }
       }
     }
