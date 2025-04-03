@@ -956,7 +956,8 @@ static void ws_on_message(ws_s *ws, fio_str_info_s msg, uint8_t is_text) {
       UWU_ChatHistory *chat =
           hashmap_get(&chats, combined.data, combined.length);
       if (NULL == chat) {
-        UWU_PANIC("Fatal: Can't obtain chat!");
+        fprintf(stderr, "Error: Can't get chat associated with: %.*s",
+                combined.length, combined.data);
         return;
       }
 
