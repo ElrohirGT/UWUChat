@@ -1,6 +1,6 @@
 # UwuChat
 
-<h2 style="text-align: center">
+<h2 style="align: center">
 Please read the instructions carefully!
 </h2>
 
