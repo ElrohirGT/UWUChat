@@ -4,6 +4,8 @@
 Please read the instructions carefully!
 </h2>
 
+[Repository Link](https://github.com/ElrohirGT/UWUChat)
+
 ## Cloning this repository
 
 This project uses
