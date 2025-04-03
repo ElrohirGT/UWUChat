@@ -86,7 +86,7 @@ Constants
 UWU_String SEPARATOR = {.data = "&/)", .length = strlen("&/)")};
 
 // The amount of seconds that need to pass in order for a user to become IDLE.
-time_t IDLE_SECONDS_LIMIT = 5;
+time_t IDLE_SECONDS_LIMIT = 15;
 // The amount of seconds that we wait before checking for IDLE users again.
 struct timespec IDLE_CHECK_FREQUENCY = {.tv_sec = 3, .tv_nsec = 0};
 
